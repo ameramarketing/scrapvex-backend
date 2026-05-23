@@ -152,12 +152,22 @@ const loginFranchise = async (req, res) => {
   }
 };
 
-/* forgot password */
+/* forgot password or request OTP */
 const forgotPassword = async (req, res) => {
   try {
     const { mobile } = req.body;
-    const person = await User.findOne({ mobile });
-    if (!person) return res.status(404).json({ success: false, message: "No account found" });
+    let person = await User.findOne({ mobile });
+    
+    // If person doesn't exist, create a guest account to save the OTP
+    if (!person) {
+      const name = req.body.name || "Guest User";
+      person = await User.create({
+        name,
+        mobile,
+        password: "GuestUserPassword123!", // Dummy password
+        role: "user"
+      });
+    }
     
     // Generate a random 4 digit OTP
     const otp = Math.floor(1000 + Math.random() * 9000).toString();
@@ -167,7 +177,7 @@ const forgotPassword = async (req, res) => {
     person.resetOTPExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
     await person.save();
     
-    await sendSMS(mobile, `Your Scrapvex password reset OTP is: ${otp}. Valid for 10 minutes. Do not share.`);
+    await sendSMS(mobile, `Your Scrapvex verification OTP is: ${otp}. Valid for 10 minutes.`);
     
     res.json({ success: true, message: "OTP sent successfully via SMS" });
   } catch (error) {

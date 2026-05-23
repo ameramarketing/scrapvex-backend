@@ -1,6 +1,6 @@
 const mongoose = require("mongoose");
 const dotenv = require("dotenv");
-const ScrapItem = require("./models/ScrapItem");
+const ScrapItem = require("../models/ScrapItem");
 
 dotenv.config();
 
