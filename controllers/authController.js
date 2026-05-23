@@ -160,12 +160,36 @@ const forgotPassword = async (req, res) => {
     if (!person) return res.status(404).json({ success: false, message: "No account found" });
     
     // Generate a random 4 digit OTP
-    const otp = Math.floor(1000 + Math.random() * 9000);
-    // Note: In production, save this OTP in the database with an expiry time. For now, we simulate it.
+    const otp = Math.floor(1000 + Math.random() * 9000).toString();
     
-    await sendSMS(mobile, `Your Scrapvex password reset OTP is: ${otp}. Please do not share it with anyone.`);
+    // Save OTP in DB with 10 minute expiry
+    person.resetOTP = otp;
+    person.resetOTPExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+    await person.save();
+    
+    await sendSMS(mobile, `Your Scrapvex password reset OTP is: ${otp}. Valid for 10 minutes. Do not share.`);
     
     res.json({ success: true, message: "OTP sent successfully via SMS" });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+/* verify OTP */
+const verifyOTP = async (req, res) => {
+  try {
+    const { mobile, otp } = req.body;
+    const person = await User.findOne({ mobile });
+    if (!person) return res.status(404).json({ success: false, message: "Account not found" });
+    
+    if (!person.resetOTP || person.resetOTP !== otp) {
+      return res.status(400).json({ success: false, message: "Invalid OTP" });
+    }
+    if (person.resetOTPExpires < new Date()) {
+      return res.status(400).json({ success: false, message: "OTP has expired. Please request a new one." });
+    }
+    
+    res.json({ success: true, message: "OTP verified successfully" });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -174,10 +198,22 @@ const forgotPassword = async (req, res) => {
 /* reset password */
 const resetPassword = async (req, res) => {
   try {
-    const { mobile, newPassword } = req.body;
+    const { mobile, otp, newPassword } = req.body;
     const person = await User.findOne({ mobile });
     if (!person) return res.status(404).json({ success: false, message: "Account not found" });
+    
+    // Verify OTP one more time before resetting password
+    if (!person.resetOTP || person.resetOTP !== otp) {
+      return res.status(400).json({ success: false, message: "Invalid OTP" });
+    }
+    if (person.resetOTPExpires < new Date()) {
+      return res.status(400).json({ success: false, message: "OTP expired. Please request a new one." });
+    }
+    
     person.password = newPassword;
+    // Clear OTP after use
+    person.resetOTP = "";
+    person.resetOTPExpires = null;
     await person.save();
     res.json({ success: true, message: "Password reset successfully!" });
   } catch (error) {
@@ -252,6 +288,7 @@ module.exports = {
   getProfile,
   updateProfile,
   forgotPassword,
+  verifyOTP,
   resetPassword,
   toggleOnlineStatus
 };

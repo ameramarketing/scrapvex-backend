@@ -25,6 +25,8 @@ const userSchema = new mongoose.Schema({
   pendingBalance: { type: Number, default: 0 },
   withdrawalOTP: { type: String, default: "" },
   withdrawalOTPExpires: { type: Date },
+  resetOTP: { type: String, default: "" },
+  resetOTPExpires: { type: Date },
   profilePhoto: { type: String, default: "" }
 }, { timestamps: true });
 

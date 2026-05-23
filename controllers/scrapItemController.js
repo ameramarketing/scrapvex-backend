@@ -43,7 +43,13 @@ exports.getActiveCities = async (req, res) => {
   try {
     const rawCities = await User.distinct("assignedCity", { role: "franchise", assignedCity: { $ne: "" } });
     // Normalize to lowercase and remove duplicates
-    const uniqueCities = [...new Set(rawCities.map(c => c.toLowerCase()))];
+    let uniqueCities = [...new Set(rawCities.map(c => c.toLowerCase()))];
+    
+    // If no franchise cities exist yet, return a default city so the app works
+    if (uniqueCities.length === 0) {
+      uniqueCities = ["rajouri"];
+    }
+    
     res.status(200).json({ success: true, cities: uniqueCities });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
