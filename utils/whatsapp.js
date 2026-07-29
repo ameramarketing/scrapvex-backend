@@ -1,6 +1,7 @@
 const axios = require('axios');
 const QRCode = require('qrcode');
 const fs = require('fs');
+const path = require('path');
 
 let client;
 let isReady = false;
@@ -8,13 +9,48 @@ let currentQrCodeUrl = "";
 let connectionStatus = "Initializing Cloud WhatsApp Engine...";
 let isInitializing = false;
 
-// Detect local Google Chrome executable on Windows
-let chromePath;
-if (fs.existsSync('C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe')) {
-  chromePath = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
-} else if (fs.existsSync('C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe')) {
-  chromePath = 'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe';
-}
+/**
+ * Recursively locates Chrome executable on Windows & Linux
+ */
+const findChromeExecutable = () => {
+  const standardPaths = [
+    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+    '/usr/bin/google-chrome',
+    '/usr/bin/chromium',
+    '/usr/bin/chromium-browser'
+  ];
+
+  for (const p of standardPaths) {
+    if (fs.existsSync(p)) return p;
+  }
+
+  // Scan Render Cloud Cache Directory
+  const baseCache = '/opt/render/.cache/puppeteer';
+  if (fs.existsSync(baseCache)) {
+    try {
+      const searchDir = (dir) => {
+        const items = fs.readdirSync(dir);
+        for (const item of items) {
+          const full = path.join(dir, item);
+          const stat = fs.statSync(full);
+          if (stat.isDirectory()) {
+            const res = searchDir(full);
+            if (res) return res;
+          } else if (item === 'chrome' || item === 'chrome.exe') {
+            return full;
+          }
+        }
+        return null;
+      };
+      const found = searchDir(baseCache);
+      if (found) return found;
+    } catch (e) {
+      console.warn("Chrome search warning:", e.message);
+    }
+  }
+  return null;
+};
 
 /**
  * Initializes WhatsApp Web Client with Session Storage
@@ -43,27 +79,17 @@ const initWhatsAppClient = async () => {
       ]
     };
 
-    // Check Render Cache Directory for Chrome executable
-    const renderCachePath = '/opt/render/.cache/puppeteer';
-    if (fs.existsSync(renderCachePath)) {
-      puppeteerOptions.cacheDirectory = renderCachePath;
-    }
-
-    if (puppeteer && puppeteer.executablePath) {
+    const detectedExecutable = findChromeExecutable();
+    if (detectedExecutable) {
+      console.log('🟢 Found Chrome Executable:', detectedExecutable);
+      puppeteerOptions.executablePath = detectedExecutable;
+    } else if (puppeteer && puppeteer.executablePath) {
       try {
-        const execPath = puppeteer.executablePath();
-        if (execPath && fs.existsSync(execPath)) {
-          puppeteerOptions.executablePath = execPath;
-        } else if (chromePath && fs.existsSync(chromePath)) {
-          puppeteerOptions.executablePath = chromePath;
+        const pPath = puppeteer.executablePath();
+        if (pPath && fs.existsSync(pPath)) {
+          puppeteerOptions.executablePath = pPath;
         }
-      } catch (e) {
-        if (chromePath && fs.existsSync(chromePath)) {
-          puppeteerOptions.executablePath = chromePath;
-        }
-      }
-    } else if (chromePath && fs.existsSync(chromePath)) {
-      puppeteerOptions.executablePath = chromePath;
+      } catch (e) {}
     }
 
     if (client) {

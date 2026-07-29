@@ -3,7 +3,7 @@ services:
     name: scrapvex-backend
     env: node
     region: singapore
-    buildCommand: PUPPETEER_CACHE_DIR=/opt/render/.cache/puppeteer npx puppeteer browsers install chrome && npm install
+    buildCommand: npx puppeteer browsers install chrome --path /opt/render/.cache/puppeteer && npm install
     startCommand: npm start
     envVars:
       - key: PORT
