@@ -9,6 +9,6 @@ services:
       - key: PORT
         value: 5000
       - key: MONGO_URI
-        value: mongodb+srv://scrapvex_admin:ScrapVex2026@cluster0.mongodb.net/scrapvex?retryWrites=true&w=majority
+        value: mongodb+srv://amjadkhan33411_db_user:06032001@cluster0.dgccilx.mongodb.net/scrapvex?retryWrites=true&w=majority
       - key: JWT_SECRET
         value: scrapvex_secret_key_2026_jk_digital
