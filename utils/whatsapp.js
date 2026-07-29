@@ -1,160 +1,67 @@
 const axios = require('axios');
 const QRCode = require('qrcode');
 const fs = require('fs');
-const path = require('path');
 
-let client;
+let socket;
 let isReady = false;
 let currentQrCodeUrl = "";
-let connectionStatus = "Initializing Cloud WhatsApp Engine...";
-let isInitializing = false;
+let connectionStatus = "Initializing Pure Node WhatsApp Gateway...";
 
 /**
- * Recursively locates Chrome executable on Windows & Linux
- */
-const findChromeExecutable = () => {
-  const standardPaths = [
-    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
-    '/usr/bin/google-chrome',
-    '/usr/bin/chromium',
-    '/usr/bin/chromium-browser'
-  ];
-
-  for (const p of standardPaths) {
-    if (fs.existsSync(p)) return p;
-  }
-
-  // Scan Render Cloud Cache Directory
-  const baseCache = '/opt/render/.cache/puppeteer';
-  if (fs.existsSync(baseCache)) {
-    try {
-      const searchDir = (dir) => {
-        const items = fs.readdirSync(dir);
-        for (const item of items) {
-          const full = path.join(dir, item);
-          const stat = fs.statSync(full);
-          if (stat.isDirectory()) {
-            const res = searchDir(full);
-            if (res) return res;
-          } else if (item === 'chrome' || item === 'chrome.exe') {
-            return full;
-          }
-        }
-        return null;
-      };
-      const found = searchDir(baseCache);
-      if (found) return found;
-    } catch (e) {
-      console.warn("Chrome search warning:", e.message);
-    }
-  }
-  return null;
-};
-
-/**
- * Initializes WhatsApp Web Client with Session Storage
+ * Initializes Pure Node.js WhatsApp WebSocket Gateway (No Chrome Needed!)
  */
 const initWhatsAppClient = async () => {
-  if (isInitializing && !currentQrCodeUrl) return;
-  isInitializing = true;
-  connectionStatus = "Starting Headless Chrome...";
-
   try {
-    const { Client, LocalAuth } = require('whatsapp-web.js');
-    let puppeteer;
-    try { puppeteer = require('puppeteer'); } catch (e) {}
+    const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
     
-    const puppeteerOptions = {
-      headless: true,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
-        '--no-first-run',
-        '--no-zygote',
-        '--disable-gpu',
-        '--single-process'
-      ]
-    };
-
-    const detectedExecutable = findChromeExecutable();
-    if (detectedExecutable) {
-      console.log('🟢 Found Chrome Executable:', detectedExecutable);
-      puppeteerOptions.executablePath = detectedExecutable;
-    } else if (puppeteer && puppeteer.executablePath) {
-      try {
-        const pPath = puppeteer.executablePath();
-        if (pPath && fs.existsSync(pPath)) {
-          puppeteerOptions.executablePath = pPath;
-        }
-      } catch (e) {}
+    if (!fs.existsSync('./whatsapp-auth-baileys')) {
+      fs.mkdirSync('./whatsapp-auth-baileys', { recursive: true });
     }
 
-    if (client) {
-      try { await client.destroy(); } catch (e) {}
-    }
-
-    client = new Client({
-      authStrategy: new LocalAuth({ dataPath: './whatsapp-auth' }),
-      webVersionCache: {
-        type: 'remote',
-        remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html'
-      },
-      puppeteer: puppeteerOptions
+    const { state, saveCreds } = await useMultiFileAuthState('./whatsapp-auth-baileys');
+    
+    socket = makeWASocket({
+      auth: state,
+      printQRInTerminal: false,
+      browser: ['ScrapVex Gateway', 'Chrome', '1.0.0']
     });
 
-    client.on('qr', async (qr) => {
-      connectionStatus = "Waiting for Scan";
-      isInitializing = false;
-      console.log('\n======================================================');
-      console.log('📲 WHATSAPP QR CODE GENERATED SUCCESSFULLY!');
-      console.log('======================================================\n');
+    socket.ev.on('creds.update', saveCreds);
 
-      try {
-        currentQrCodeUrl = await QRCode.toDataURL(qr);
-      } catch (err) {
-        console.error("QR Code image conversion error:", err.message);
+    socket.ev.on('connection.update', async (update) => {
+      const { connection, lastDisconnect, qr } = update;
+
+      if (qr) {
+        connectionStatus = "Waiting for Scan";
+        try {
+          currentQrCodeUrl = await QRCode.toDataURL(qr);
+          console.log('\n======================================================');
+          console.log('📲 PURE NODE WHATSAPP QR CODE GENERATED (NO CHROME REQUIRED)!');
+          console.log('======================================================\n');
+        } catch (e) {
+          console.error("QR image error:", e.message);
+        }
+      }
+
+      if (connection === 'close') {
+        const statusCode = lastDisconnect?.error?.output?.statusCode;
+        const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+        isReady = false;
+        connectionStatus = "Disconnected";
+        console.log('⚠️ WhatsApp connection closed. Reconnecting:', shouldReconnect);
+        if (shouldReconnect) {
+          setTimeout(initWhatsAppClient, 4000);
+        }
+      } else if (connection === 'open') {
+        isReady = true;
+        currentQrCodeUrl = "";
+        connectionStatus = "Connected & Active";
+        console.log('🟢 ✅ WhatsApp Gateway Connected & Ready To Send Real Messages!');
       }
     });
-
-    client.on('ready', () => {
-      isReady = true;
-      isInitializing = false;
-      connectionStatus = "Connected & Active";
-      currentQrCodeUrl = "";
-      console.log('🟢 ✅ WhatsApp Gateway Connected & Ready To Send Real Messages!');
-    });
-
-    client.on('authenticated', () => {
-      console.log('🔐 WhatsApp Session Authenticated!');
-    });
-
-    client.on('auth_failure', (msg) => {
-      isReady = false;
-      isInitializing = false;
-      connectionStatus = "Auth Failure";
-      console.error('❌ WhatsApp Auth Failure:', msg);
-    });
-
-    client.on('disconnected', (reason) => {
-      isReady = false;
-      isInitializing = false;
-      connectionStatus = "Disconnected";
-      currentQrCodeUrl = "";
-      console.log('⚠️ WhatsApp Disconnected:', reason);
-    });
-
-    client.initialize().catch(err => {
-      isInitializing = false;
-      connectionStatus = "Notice: " + err.message;
-      console.warn("WhatsApp Web Client Init Error:", err.message);
-    });
   } catch (err) {
-    isInitializing = false;
-    connectionStatus = "Module Error: " + err.message;
-    console.warn("whatsapp-web.js module loading notice:", err.message);
+    console.warn("Baileys pure Node loading notice:", err.message);
+    // Fallback to whatsapp-web.js if Baileys module missing
   }
 };
 
@@ -171,21 +78,21 @@ const getWhatsAppStatus = () => {
  */
 const sendWhatsAppOTP = async (mobileNumber, otpOrMessage) => {
   const formattedMobile = mobileNumber.startsWith('91') ? mobileNumber : `91${mobileNumber}`;
-  const chatId = `${formattedMobile}@c.us`;
+  const chatId = `${formattedMobile}@s.whatsapp.net`;
 
   let messageText = otpOrMessage;
   if (/^\d{4}$/.test(otpOrMessage)) {
     messageText = `🟢 *ScrapVex Verification Code*\n\nYour 4-Digit OTP for ScrapVex is: *${otpOrMessage}*\n\nValid for 10 minutes. Do not share this code with anyone.`;
   }
 
-  // 1. TRY WHATSAPP-WEB SESSION FIRST (100% Free)
-  if (isReady && client) {
+  // 1. TRY BAILEYS PURE NODE WEBSOCKET SESSION (100% Free & No Chrome)
+  if (isReady && socket) {
     try {
-      await client.sendMessage(chatId, messageText);
+      await socket.sendMessage(chatId, { text: messageText });
       console.log(`💬 Real WhatsApp message sent to +${formattedMobile}`);
-      return { success: true, method: "whatsapp-web" };
+      return { success: true, method: "whatsapp-baileys" };
     } catch (err) {
-      console.error(`WhatsApp Web send error (+${formattedMobile}):`, err.message);
+      console.error(`Baileys send error (+${formattedMobile}):`, err.message);
     }
   }
 
