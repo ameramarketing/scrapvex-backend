@@ -23,7 +23,9 @@ const initWhatsAppClient = async () => {
     socket = makeWASocket({
       auth: state,
       printQRInTerminal: false,
-      browser: ['ScrapVex Gateway', 'Chrome', '1.0.0']
+      browser: ['ScrapVex Gateway', 'Chrome', '1.0.0'],
+      connectTimeoutMs: 15000,
+      defaultQueryTimeoutMs: 10000
     });
 
     socket.ev.on('creds.update', saveCreds);
@@ -50,7 +52,7 @@ const initWhatsAppClient = async () => {
         connectionStatus = "Disconnected";
         console.log('⚠️ WhatsApp connection closed. Reconnecting:', shouldReconnect);
         if (shouldReconnect) {
-          setTimeout(initWhatsAppClient, 4000);
+          setTimeout(initWhatsAppClient, 5000);
         }
       } else if (connection === 'open') {
         isReady = true;
@@ -61,7 +63,6 @@ const initWhatsAppClient = async () => {
     });
   } catch (err) {
     console.warn("Baileys pure Node loading notice:", err.message);
-    // Fallback to whatsapp-web.js if Baileys module missing
   }
 };
 
@@ -74,7 +75,7 @@ const getWhatsAppStatus = () => {
 };
 
 /**
- * Sends a WhatsApp Message or OTP Code
+ * Sends a WhatsApp Message or OTP Code with 4-second fail-safe timeout
  */
 const sendWhatsAppOTP = async (mobileNumber, otpOrMessage) => {
   const formattedMobile = mobileNumber.startsWith('91') ? mobileNumber : `91${mobileNumber}`;
@@ -85,10 +86,13 @@ const sendWhatsAppOTP = async (mobileNumber, otpOrMessage) => {
     messageText = `🟢 *ScrapVex Verification Code*\n\nYour 4-Digit OTP for ScrapVex is: *${otpOrMessage}*\n\nValid for 10 minutes. Do not share this code with anyone.`;
   }
 
-  // 1. TRY BAILEYS PURE NODE WEBSOCKET SESSION (100% Free & No Chrome)
+  // 1. TRY BAILEYS PURE NODE WEBSOCKET SESSION (Fail-safe 4s timeout)
   if (isReady && socket) {
     try {
-      await socket.sendMessage(chatId, { text: messageText });
+      await Promise.race([
+        socket.sendMessage(chatId, { text: messageText }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("WhatsApp send timeout")), 4000))
+      ]);
       console.log(`💬 Real WhatsApp message sent to +${formattedMobile}`);
       return { success: true, method: "whatsapp-baileys" };
     } catch (err) {
@@ -106,7 +110,7 @@ const sendWhatsAppOTP = async (mobileNumber, otpOrMessage) => {
         token: token,
         to: `+${formattedMobile}`,
         body: messageText
-      });
+      }, { timeout: 4000 });
       console.log(`💬 WhatsApp API message sent to +${formattedMobile}:`, response.data);
       return { success: true, method: "whatsapp-api", data: response.data };
     } catch (error) {
