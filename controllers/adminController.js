@@ -150,11 +150,39 @@ const assignPickup = async (req, res) => {
     pickup.status = "Assigned";
     await pickup.save();
 
-    // NOTIFY USER & COLLECTOR
+    // NOTIFY USER & COLLECTOR IN-APP + WHATSAPP + SMS
     createNotify(pickup.user, "User", "Collector Assigned", `Collector ${collectorUser.name} has been assigned to your pickup request.`, "success");
     createNotify(collectorId, "User", "New Task Assigned", `You have been assigned a new ${pickup.scrapType} pickup at ${pickup.address}`, "info");
 
-    res.status(200).json({ success: true, message: "Pickup assigned successfully", pickup });
+    const customerUser = await User.findById(pickup.user);
+    const shortId = pickup._id.toString().slice(-6);
+
+    // Send Alert to Customer
+    if (customerUser && customerUser.mobile) {
+      await sendCollectorAssignedCustomerNotification({
+        customerMobile: customerUser.mobile,
+        customerName: customerUser.name,
+        collectorName: collectorUser.name,
+        collectorPhone: collectorUser.mobile,
+        pickupId: shortId
+      });
+    }
+
+    // Send Alert to Collector
+    if (collectorUser && collectorUser.mobile) {
+      await sendNewTaskCollectorNotification({
+        collectorMobile: collectorUser.mobile,
+        collectorName: collectorUser.name,
+        customerName: pickup.name || customerUser?.name || "Customer",
+        customerPhone: pickup.mobile || customerUser?.mobile,
+        address: pickup.address,
+        city: pickup.city,
+        scrapType: pickup.scrapType,
+        pickupId: shortId
+      });
+    }
+
+    res.status(200).json({ success: true, message: "Collector assigned successfully", pickup });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -639,8 +667,19 @@ const approveDeposit = async (req, res) => {
     transaction.description = `Wallet Deposit (UPI Approved: ${transaction.depositDetails?.upiRefNo})`;
     await transaction.save();
 
-    // Notify user
+    // Notify user in-app + WhatsApp + SMS
     createNotify(targetUser._id, "User", "Deposit Approved! 🏦", `Your wallet deposit of ₹${transaction.amount} has been verified and approved.`, "success");
+
+    if (targetUser.mobile) {
+      const { sendWalletCreditNotification } = require("../utils/notifier");
+      await sendWalletCreditNotification({
+        mobile: targetUser.mobile,
+        name: targetUser.name,
+        amount: transaction.amount,
+        pickupId: "Deposit",
+        newBalance: targetUser.walletBalance
+      });
+    }
 
     res.status(200).json({
       success: true,

@@ -90,23 +90,45 @@ const updatePickupStatus = async (req, res) => {
 
     await pickup.save();
 
-    // NOTIFICATIONS
+    // NOTIFICATIONS VIA IN-APP + WHATSAPP + SMS
     try {
-      if (status === "Accepted") {
+      const { sendCollectorOnTheWayNotification, sendPickupCompletedReceiptNotification } = require("../utils/notifier");
+      const customerUser = await User.findById(pickup.user);
+      const shortId = pickup._id.toString().slice(-6);
+
+      if (status === "Accepted" || status === "OnTheWay") {
         // Notify Customer
         if (pickup.user) {
-          createNotify(pickup.user, "User", "Pickup Accepted", `Collector ${req.user.name} has accepted your pickup request.`, "success");
+          createNotify(pickup.user, "User", "Collector On The Way", `Collector ${req.user.name} is on the way for your pickup request.`, "success");
+        }
+        if (customerUser && customerUser.mobile) {
+          await sendCollectorOnTheWayNotification({
+            customerMobile: customerUser.mobile,
+            customerName: customerUser.name,
+            collectorName: req.user.name,
+            pickupId: shortId
+          });
         }
         // Notify Franchise
         const franchise = await User.findOne({ role: "franchise", assignedCity: { $regex: new RegExp(`^${pickup.city}$`, "i") } });
         if (franchise) {
-          createNotify(franchise._id, "User", "Pickup Accepted", `Collector ${req.user.name} accepted pickup #${pickup._id.toString().slice(-6)} in ${pickup.city}`, "info");
+          createNotify(franchise._id, "User", "Pickup Accepted", `Collector ${req.user.name} accepted pickup #${shortId} in ${pickup.city}`, "info");
         }
       } else if (status === "Completed") {
+        if (customerUser && customerUser.mobile) {
+          await sendPickupCompletedReceiptNotification({
+            customerMobile: customerUser.mobile,
+            customerName: customerUser.name,
+            pickupId: shortId,
+            totalWeight: pickup.weight,
+            totalAmount: pickup.amount || 0,
+            paymentMode: "Cash/UPI"
+          });
+        }
         // Notify Franchise
         const franchise = await User.findOne({ role: "franchise", assignedCity: { $regex: new RegExp(`^${pickup.city}$`, "i") } });
         if (franchise) {
-          createNotify(franchise._id, "User", "Pickup Completed", `Collector ${req.user.name} completed pickup #${pickup._id.toString().slice(-6)}`, "success");
+          createNotify(franchise._id, "User", "Pickup Completed", `Collector ${req.user.name} completed pickup #${shortId}`, "success");
         }
       }
     } catch (err) {

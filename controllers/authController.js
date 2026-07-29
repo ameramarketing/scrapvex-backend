@@ -370,6 +370,13 @@ const resetPassword = async (req, res) => {
     person.resetOTP = "";
     person.resetOTPExpires = null;
     await person.save();
+
+    // Send Security Alert via WhatsApp & SMS
+    try {
+      const { sendPasswordResetSecurityNotification } = require("../utils/notifier");
+      await sendPasswordResetSecurityNotification({ mobile: person.mobile, name: person.name });
+    } catch (secErr) {}
+
     res.json({ success: true, message: "Password reset successfully!" });
   } catch (error) {
     res.status(500).json({ message: error.message });
