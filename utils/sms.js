@@ -29,12 +29,31 @@ const sendSMS = async (mobileNumber, message) => {
     console.log(`SMS successfully sent to ${mobileNumber}:`, response.data);
     return { success: true, data: response.data };
   } catch (error) {
-    console.error(`Failed to send SMS to ${mobileNumber}:`, error.message);
+    const providerMessage = error.response?.data?.message || error.message;
+    console.error(`Failed to send SMS to ${mobileNumber}:`, providerMessage);
     // Let it fail gracefully rather than crashing the server
-    return { success: false, error: error.message };
+    return {
+      success: false,
+      error: providerMessage,
+      details: error.response?.data,
+    };
   }
+};
+
+const buildOtpResponsePayload = (otp, smsResult, defaultMessage) => {
+  const smsSent = smsResult?.success === true;
+  return {
+    success: true,
+    message: smsSent
+      ? defaultMessage
+      : `SMS delivery failed (${smsResult?.error || "gateway error"}). Use the verification code below for testing instead.`,
+    debugOtp: otp,
+    smsSent,
+    ...(smsResult?.error ? { smsError: smsResult.error } : {}),
+  };
 };
 
 module.exports = {
   sendSMS,
+  buildOtpResponsePayload,
 };

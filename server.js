@@ -18,6 +18,10 @@ dotenv.config();
 // Connect MongoDB
 connectDB();
 
+// Initialize WhatsApp Web Gateway
+const { initWhatsAppClient } = require("./utils/whatsapp");
+initWhatsAppClient();
+
 const path = require("path");
 const fs = require("fs");
 

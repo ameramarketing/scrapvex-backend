@@ -32,6 +32,7 @@ router.get("/active-cities", getActiveCities);
 
 /* Create New Pickup (Public/Guest allowed) */
 router.post("/create", createPickup);
+router.post("/", createPickup);
 
 /* Get Logged User Pickups */
 router.get("/my", protect, getMyPickups);

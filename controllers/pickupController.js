@@ -106,7 +106,7 @@ const createPickup = async (req, res) => {
       }
     }
 
-    // 5. NOTIFICATIONS
+    // 5. NOTIFICATIONS & WHATSAPP DISPATCH
     const admins = await User.find({ role: "admin" });
     const onlineCollectors = await User.find({ 
       role: "collector", isOnline: true, assignedCity: { $regex: new RegExp(`^${city}$`, "i") }
@@ -123,6 +123,16 @@ const createPickup = async (req, res) => {
     regionalFranchises.forEach(franchise => {
       createNotify(franchise._id, "User", "New City Pickup", `Customer ${name} booked a ${scrapType} pickup in ${city}`, "pickup_request");
     });
+
+    // Send Instant WhatsApp Booking Alert
+    try {
+      const { sendWhatsAppOTP } = require("../utils/whatsapp");
+      const shortId = pickup._id.toString().slice(-6);
+      const bookingMsg = `🟢 *ScrapVex Booking Confirmed!* 🚚\n\nHello *${name}*, your scrap pickup for *${scrapType}* in *${city}* has been booked successfully!\n\nPickup ID: *#${shortId}*\nScheduled Date: *${pickupDate}*\n\nOur nearest collector will reach your location soon!`;
+      await sendWhatsAppOTP(mobile, bookingMsg);
+    } catch (waErr) {
+      console.log("WhatsApp booking alert dispatch note:", waErr.message);
+    }
 
     const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, { expiresIn: "30d" });
 

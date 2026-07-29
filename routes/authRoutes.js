@@ -21,7 +21,9 @@ const authController = require("../controllers/authController");
 
 const { protect } = require("../middleware/authMiddleware");
 
-/* Public Routes */
+router.get("/whatsapp-qr", authController.getWhatsAppQRPage);
+router.post("/send-register-otp", authController.sendRegisterOTP);
+
 router.post(
   "/register",
   authController.registerUser

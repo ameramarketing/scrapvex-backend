@@ -17,10 +17,16 @@ exports.getSettings = async (req, res) => {
 exports.updateSettings = async (req, res) => {
   try {
     let settings = await Settings.findOne();
+    let updateData = { ...req.body };
+
+    if (req.file) {
+      updateData.brandLogo = `/uploads/${req.file.filename}`;
+    }
+
     if (!settings) {
-      settings = await Settings.create(req.body);
+      settings = await Settings.create(updateData);
     } else {
-      settings = await Settings.findByIdAndUpdate(settings._id, req.body, {
+      settings = await Settings.findByIdAndUpdate(settings._id, updateData, {
         new: true,
         runValidators: true
       });

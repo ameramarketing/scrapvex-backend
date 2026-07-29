@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: scrapvex-backend
+    env: node
+    region: singapore
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: PORT
+        value: 5000
+      - key: MONGO_URI
+        value: mongodb+srv://scrapvex_admin:ScrapVex2026@cluster0.mongodb.net/scrapvex?retryWrites=true&w=majority
+      - key: JWT_SECRET
+        value: scrapvex_secret_key_2026_jk_digital

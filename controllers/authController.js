@@ -4,7 +4,8 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 const Pickup = require("../models/Pickup");
-const { sendSMS } = require("../utils/sms");
+const { sendSMS, buildOtpResponsePayload } = require("../utils/sms");
+const { sendWhatsAppOTP } = require("../utils/whatsapp");
 
 /* token generator */
 const generateToken = (id, role) => {
@@ -15,23 +16,72 @@ const generateToken = (id, role) => {
   );
 };
 
+const otpStore = new Map();
+
+/* send OTP for new registration (WhatsApp or SMS) */
+const sendRegisterOTP = async (req, res) => {
+  try {
+    const { mobile, channel = "whatsapp" } = req.body;
+    if (!mobile || mobile.length !== 10) {
+      return res.status(400).json({ message: "Enter valid 10-digit mobile number" });
+    }
+    const userExists = await User.findOne({ mobile });
+    if (userExists) {
+      return res.status(400).json({ message: "Mobile number already registered. Please login!" });
+    }
+
+    const otp = Math.floor(1000 + Math.random() * 9000).toString();
+    otpStore.set(mobile, { otp, expiresAt: Date.now() + 10 * 60 * 1000 });
+
+    let dispatchResult;
+    if (channel === "whatsapp") {
+      dispatchResult = await sendWhatsAppOTP(mobile, otp);
+    } else {
+      dispatchResult = await sendSMS(mobile, `Your ScrapVex Registration OTP is ${otp}. Valid for 10 minutes.`);
+    }
+
+    const defaultMsg = channel === "whatsapp" 
+      ? `OTP sent to your WhatsApp (+91 ${mobile}) 💬` 
+      : `OTP sent via SMS to +91 ${mobile} 📱`;
+
+    const otpResponse = buildOtpResponsePayload(otp, dispatchResult, defaultMsg);
+    otpResponse.channel = channel;
+
+    res.json(otpResponse);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 /* register user (Standard for customers) */
 const registerUser = async (req, res) => {
   try {
-    const { name, mobile, email, password } = req.body;
-    if (!name || !mobile || !password) {
-      return res.status(400).json({ message: "Fill all required fields" });
+    const { name, mobile, email, password, otp } = req.body;
+    if (!name || !mobile || !password || !otp) {
+      return res.status(400).json({ message: "Fill all required fields including OTP" });
     }
+
+    const stored = otpStore.get(mobile);
+    if (!stored || stored.otp !== otp) {
+      return res.status(400).json({ message: "Invalid OTP. Please check the 4-digit code sent to your mobile." });
+    }
+    if (Date.now() > stored.expiresAt) {
+      return res.status(400).json({ message: "OTP has expired. Please request a new OTP." });
+    }
+
     const userExists = await User.findOne({ mobile });
     if (userExists) {
       return res.status(400).json({ message: "Mobile number already exists" });
     }
+
+    otpStore.delete(mobile); // Clear used OTP
+
     const userData = { name, mobile, password, role: "user" };
     if (email) userData.email = email;
     const user = await User.create(userData);
     
     // Send Welcome SMS
-    await sendSMS(mobile, `Welcome to Scrapvex! Your account has been created successfully. Ab raddi bechna hua aasaan!`);
+    await sendSMS(mobile, `Welcome to ScrapVex! Your account has been created successfully. Ab raddi bechna hua aasaan!`);
 
     res.status(201).json({
       success: true,
@@ -46,17 +96,30 @@ const registerUser = async (req, res) => {
 /* register collector (Self-registration for collectors) */
 const registerCollector = async (req, res) => {
   try {
-    const { name, mobile, email, password, area } = req.body;
-    if (!name || !mobile || !password) {
-      return res.status(400).json({ message: "Fill all required fields" });
+    const { name, mobile, email, password, area, otp } = req.body;
+    if (!name || !mobile || !password || !area || !otp) {
+      return res.status(400).json({ message: "Fill all required fields including OTP and Area" });
     }
+
+    const stored = otpStore.get(mobile);
+    if (!stored || stored.otp !== otp) {
+      return res.status(400).json({ message: "Invalid OTP. Please check the 4-digit code sent to your mobile." });
+    }
+    if (Date.now() > stored.expiresAt) {
+      return res.status(400).json({ message: "OTP has expired. Please request a new OTP." });
+    }
+
     const userExists = await User.findOne({ mobile });
     if (userExists) {
       return res.status(400).json({ message: "Mobile number already registered" });
     }
-    const collectorData = { name, mobile, password, area: area || "", role: "collector" };
+
+    otpStore.delete(mobile); // Clear used OTP
+
+    const collectorData = { name, mobile, password, area, role: "collector" };
     if (email) collectorData.email = email;
     const user = await User.create(collectorData);
+
     res.status(201).json({
       success: true,
       token: generateToken(user._id, user.role),
@@ -152,10 +215,10 @@ const loginFranchise = async (req, res) => {
   }
 };
 
-/* forgot password or request OTP */
+/* forgot password or request OTP (WhatsApp & SMS) */
 const forgotPassword = async (req, res) => {
   try {
-    const { mobile } = req.body;
+    const { mobile, channel = "whatsapp" } = req.body;
     let person = await User.findOne({ mobile });
     
     // If person doesn't exist, create a guest account to save the OTP
@@ -177,9 +240,21 @@ const forgotPassword = async (req, res) => {
     person.resetOTPExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
     await person.save();
     
-    await sendSMS(mobile, `Your Scrapvex verification OTP is: ${otp}. Valid for 10 minutes.`);
+    let dispatchResult;
+    if (channel === "whatsapp") {
+      dispatchResult = await sendWhatsAppOTP(mobile, otp);
+    } else {
+      dispatchResult = await sendSMS(mobile, `Your ScrapVex verification OTP is: ${otp}. Valid for 10 minutes.`);
+    }
+
+    const defaultMsg = channel === "whatsapp" 
+      ? `Password reset OTP sent to your WhatsApp (+91 ${mobile}) 💬` 
+      : `Password reset OTP sent via SMS to +91 ${mobile} 📱`;
+
+    const otpResponse = buildOtpResponsePayload(otp, dispatchResult, defaultMsg);
+    otpResponse.channel = channel;
     
-    res.json({ success: true, message: "OTP sent successfully via SMS" });
+    res.json(otpResponse);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -288,7 +363,60 @@ const toggleOnlineStatus = async (req, res) => {
   }
 };
 
+const getWhatsAppQRPage = async (req, res) => {
+  try {
+    const { getWhatsAppStatus } = require("../utils/whatsapp");
+    const { isReady, status, qrCodeUrl } = getWhatsAppStatus();
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>ScrapVex - WhatsApp Gateway QR Connect</title>
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <meta http-equiv="refresh" content="5">
+          <style>
+            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #0f172a; color: #fff; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 20px; }
+            .card { background: #1e293b; padding: 36px; border-radius: 24px; text-align: center; max-width: 440px; width: 100%; box-shadow: 0 25px 50px rgba(0,0,0,0.5); border: 1px solid #334155; }
+            h2 { margin: 10px 0; color: #22c55e; }
+            .status-pill { display: inline-block; padding: 8px 16px; border-radius: 999px; font-weight: bold; font-size: 14px; margin-bottom: 20px; background: ${isReady ? '#166534' : '#854d0e'}; color: ${isReady ? '#4ade80' : '#fef08a'}; }
+            .qr-img { width: 260px; height: 260px; border-radius: 16px; border: 4px solid #22c55e; background: #fff; padding: 10px; margin: 15px 0; }
+            .steps { text-align: left; background: #0f172a; padding: 18px; border-radius: 14px; font-size: 13px; color: #cbd5e1; line-height: 1.6; border: 1px solid #334155; }
+          </style>
+        </head>
+        <body>
+          <div class="card">
+            <div style="font-size: 50px;">💬</div>
+            <h2>ScrapVex WhatsApp Gateway</h2>
+            <div class="status-pill">${isReady ? '🟢 CONNECTED & READY' : '⏳ ' + status.toUpperCase()}</div>
+
+            ${isReady ? `
+              <div style="padding: 20px; background: #052e16; border-radius: 16px; color: #4ade80; font-weight: bold; margin: 20px 0;">
+                🎉 WhatsApp Gateway is 100% Active & Connected! Real WhatsApp OTPs will be sent automatically.
+              </div>
+            ` : `
+              ${qrCodeUrl ? `<img src="${qrCodeUrl}" class="qr-img" alt="WhatsApp QR Code" />` : '<p style="color:#94a3b8">Generating QR Code... Page refreshes every 5 seconds</p>'}
+              <div class="steps">
+                <b>📱 How to Connect Your WhatsApp (1-Minute):</b><br/>
+                1. Open WhatsApp on your mobile phone.<br/>
+                2. Tap Menu <b>⋮ (3 dots)</b> or <b>Settings</b>.<br/>
+                3. Select <b>Linked Devices</b> -> <b>Link a Device</b>.<br/>
+                4. Point your camera at this screen to scan the QR code!
+              </div>
+            `}
+          </div>
+        </body>
+      </html>
+    `;
+    res.setHeader("Content-Type", "text/html");
+    res.send(html);
+  } catch (err) {
+    res.status(500).send("Error rendering QR page: " + err.message);
+  }
+};
+
 module.exports = {
+  sendRegisterOTP,
   registerUser,
   registerCollector,
   loginUser,
@@ -300,5 +428,6 @@ module.exports = {
   forgotPassword,
   verifyOTP,
   resetPassword,
-  toggleOnlineStatus
+  toggleOnlineStatus,
+  getWhatsAppQRPage
 };
