@@ -46,6 +46,9 @@ const sendRegisterOTP = async (req, res) => {
 
     const otpResponse = buildOtpResponsePayload(otp, dispatchResult, defaultMsg);
     otpResponse.channel = channel;
+    const whatsappMsgText = `🟢 *ScrapVex Verification Code*\n\nYour 4-Digit OTP Code is: *${otp}*\n\nValid for 10 minutes. Do not share with anyone.`;
+    otpResponse.whatsappText = whatsappMsgText;
+    otpResponse.whatsappLink = `https://api.whatsapp.com/send?phone=91${mobile}&text=${encodeURIComponent(whatsappMsgText)}`;
 
     res.json(otpResponse);
   } catch (error) {
@@ -253,6 +256,9 @@ const forgotPassword = async (req, res) => {
 
     const otpResponse = buildOtpResponsePayload(otp, dispatchResult, defaultMsg);
     otpResponse.channel = channel;
+    const whatsappMsgText = `🟢 *ScrapVex Verification Code*\n\nYour 4-Digit OTP Code is: *${otp}*\n\nValid for 10 minutes. Do not share with anyone.`;
+    otpResponse.whatsappText = whatsappMsgText;
+    otpResponse.whatsappLink = `https://api.whatsapp.com/send?phone=91${mobile}&text=${encodeURIComponent(whatsappMsgText)}`;
     
     res.json(otpResponse);
   } catch (error) {
