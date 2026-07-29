@@ -305,13 +305,30 @@ const forgotPassword = async (req, res) => {
   }
 };
 
-/* verify OTP */
+/* verify OTP (Supports both existing users & new guest booking auto-account creation) */
 const verifyOTP = async (req, res) => {
   try {
-    const { mobile, otp } = req.body;
-    const person = await User.findOne({ mobile });
-    if (!person) return res.status(404).json({ success: false, message: "Account not found" });
-    
+    const { mobile, otp, name } = req.body;
+    let person = await User.findOne({ mobile });
+
+    // Check in-memory otpStore if person is a new guest customer
+    if (!person) {
+      const stored = otpStore.get(mobile);
+      if (stored && stored.otp === otp && stored.expiresAt > Date.now()) {
+        // Auto-create customer account for guest pickup booking!
+        person = await User.create({
+          name: name || "Customer",
+          mobile: mobile,
+          password: "GuestUserPassword123!",
+          role: "user"
+        });
+        otpStore.delete(mobile);
+        return res.json({ success: true, message: "OTP verified & Account created!", autoCreated: true, user: person });
+      } else {
+        return res.status(400).json({ success: false, message: "Invalid or expired OTP" });
+      }
+    }
+
     if (!person.resetOTP || person.resetOTP !== otp) {
       return res.status(400).json({ success: false, message: "Invalid OTP" });
     }
@@ -319,7 +336,7 @@ const verifyOTP = async (req, res) => {
       return res.status(400).json({ success: false, message: "OTP has expired. Please request a new one." });
     }
     
-    res.json({ success: true, message: "OTP verified successfully" });
+    res.json({ success: true, message: "OTP verified successfully", user: person });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
