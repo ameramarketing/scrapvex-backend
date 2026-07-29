@@ -5,7 +5,8 @@ const fs = require('fs');
 let client;
 let isReady = false;
 let currentQrCodeUrl = "";
-let connectionStatus = "Disconnected (Generating QR Code...)";
+let connectionStatus = "Initializing Cloud WhatsApp Engine...";
+let isInitializing = false;
 
 // Detect local Google Chrome executable on Windows
 let chromePath;
@@ -16,15 +17,20 @@ if (fs.existsSync('C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'))
 }
 
 /**
- * Initializes local/cloud WhatsApp Web Client with Session Storage
+ * Initializes WhatsApp Web Client with Session Storage
  */
-const initWhatsAppClient = () => {
+const initWhatsAppClient = async () => {
+  if (isInitializing && !currentQrCodeUrl) return;
+  isInitializing = true;
+  connectionStatus = "Starting Headless Chrome...";
+
   try {
     const { Client, LocalAuth } = require('whatsapp-web.js');
-    const puppeteer = require('puppeteer');
+    let puppeteer;
+    try { puppeteer = require('puppeteer'); } catch (e) {}
     
     const puppeteerOptions = {
-      headless: true,
+      headless: 'new',
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
@@ -37,18 +43,25 @@ const initWhatsAppClient = () => {
       ]
     };
 
-    try {
-      // Use downloaded puppeteer executable path if available
-      const execPath = puppeteer.executablePath();
-      if (execPath && fs.existsSync(execPath)) {
-        puppeteerOptions.executablePath = execPath;
-      } else if (chromePath && fs.existsSync(chromePath)) {
-        puppeteerOptions.executablePath = chromePath;
+    if (puppeteer && puppeteer.executablePath) {
+      try {
+        const execPath = puppeteer.executablePath();
+        if (execPath && fs.existsSync(execPath)) {
+          puppeteerOptions.executablePath = execPath;
+        } else if (chromePath && fs.existsSync(chromePath)) {
+          puppeteerOptions.executablePath = chromePath;
+        }
+      } catch (e) {
+        if (chromePath && fs.existsSync(chromePath)) {
+          puppeteerOptions.executablePath = chromePath;
+        }
       }
-    } catch (e) {
-      if (chromePath && fs.existsSync(chromePath)) {
-        puppeteerOptions.executablePath = chromePath;
-      }
+    } else if (chromePath && fs.existsSync(chromePath)) {
+      puppeteerOptions.executablePath = chromePath;
+    }
+
+    if (client) {
+      try { await client.destroy(); } catch (e) {}
     }
 
     client = new Client({
@@ -62,6 +75,7 @@ const initWhatsAppClient = () => {
 
     client.on('qr', async (qr) => {
       connectionStatus = "Waiting for Scan";
+      isInitializing = false;
       console.log('\n======================================================');
       console.log('📲 WHATSAPP QR CODE GENERATED SUCCESSFULLY!');
       console.log('======================================================\n');
@@ -75,6 +89,7 @@ const initWhatsAppClient = () => {
 
     client.on('ready', () => {
       isReady = true;
+      isInitializing = false;
       connectionStatus = "Connected & Active";
       currentQrCodeUrl = "";
       console.log('🟢 ✅ WhatsApp Gateway Connected & Ready To Send Real Messages!');
@@ -85,21 +100,28 @@ const initWhatsAppClient = () => {
     });
 
     client.on('auth_failure', (msg) => {
+      isReady = false;
+      isInitializing = false;
       connectionStatus = "Auth Failure";
       console.error('❌ WhatsApp Auth Failure:', msg);
     });
 
     client.on('disconnected', (reason) => {
       isReady = false;
+      isInitializing = false;
       connectionStatus = "Disconnected";
       currentQrCodeUrl = "";
       console.log('⚠️ WhatsApp Disconnected:', reason);
     });
 
     client.initialize().catch(err => {
+      isInitializing = false;
+      connectionStatus = "Notice: " + err.message;
       console.warn("WhatsApp Web Client Init Error:", err.message);
     });
   } catch (err) {
+    isInitializing = false;
+    connectionStatus = "Module Error: " + err.message;
     console.warn("whatsapp-web.js module loading notice:", err.message);
   }
 };
@@ -114,8 +136,6 @@ const getWhatsAppStatus = () => {
 
 /**
  * Sends a WhatsApp Message or OTP Code
- * @param {string} mobileNumber - 10-digit Indian Mobile Number
- * @param {string} otpOrMessage - 4-digit OTP Code or text message
  */
 const sendWhatsAppOTP = async (mobileNumber, otpOrMessage) => {
   const formattedMobile = mobileNumber.startsWith('91') ? mobileNumber : `91${mobileNumber}`;
