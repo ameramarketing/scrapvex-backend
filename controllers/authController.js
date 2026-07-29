@@ -6,6 +6,7 @@ const User = require("../models/User");
 const Pickup = require("../models/Pickup");
 const { sendSMS, buildOtpResponsePayload } = require("../utils/sms");
 const { sendWhatsAppOTP } = require("../utils/whatsapp");
+const { sendWelcomeCredentialsNotification } = require("../utils/notifier");
 
 /* token generator */
 const generateToken = (id, role) => {
@@ -122,8 +123,8 @@ const registerUser = async (req, res) => {
     if (email) userData.email = email;
     const user = await User.create(userData);
     
-    // Send Welcome SMS
-    await sendSMS(mobile, `Welcome to ScrapVex! Your account has been created successfully. Ab raddi bechna hua aasaan!`);
+    // Send Welcome Credentials via WhatsApp & SMS
+    await sendWelcomeCredentialsNotification({ name, mobile, role: "user", password });
 
     res.status(201).json({
       success: true,
@@ -161,6 +162,9 @@ const registerCollector = async (req, res) => {
     const collectorData = { name, mobile, password, area, role: "collector" };
     if (email) collectorData.email = email;
     const user = await User.create(collectorData);
+
+    // Send Welcome Credentials via WhatsApp & SMS
+    await sendWelcomeCredentialsNotification({ name, mobile, role: "collector", password });
 
     res.status(201).json({
       success: true,
@@ -323,6 +327,10 @@ const verifyOTP = async (req, res) => {
           role: "user"
         });
         otpStore.delete(mobile);
+
+        // Send Welcome Credentials via WhatsApp & SMS
+        await sendWelcomeCredentialsNotification({ name: name || "Customer", mobile, role: "user", password: "GuestUserPassword123!" });
+
         return res.json({ success: true, message: "OTP verified & Account created!", autoCreated: true, user: person });
       } else {
         return res.status(400).json({ success: false, message: "Invalid or expired OTP" });

@@ -6,6 +6,7 @@ const ScrapItem = require("../models/ScrapItem");
 const CityRate = require("../models/CityRate");
 const WalletTransaction = require("../models/WalletTransaction");
 const { createNotify } = require("./notificationController");
+const { sendWelcomeCredentialsNotification, sendPickupTransactionNotification } = require("../utils/notifier");
 
 /* ===============================
    GET DASHBOARD STATS
@@ -104,9 +105,20 @@ const updatePickupStatus = async (req, res) => {
 
     await pickup.save();
 
-    // NOTIFY USER
+    // NOTIFY USER IN-APP + WHATSAPP + SMS
     const statusMsg = status === "Completed" ? `Your pickup for ${pickup.scrapType} is completed. Amount Paid: ₹${pickup.amount || 0}` : `Your pickup status has been updated to: ${status}`;
     createNotify(pickup.user, "User", "Pickup Status Updated", statusMsg, status === "Completed" ? "success" : "info");
+
+    const pickupUser = await User.findById(pickup.user);
+    if (pickupUser && pickupUser.mobile) {
+      await sendPickupTransactionNotification({
+        mobile: pickupUser.mobile,
+        name: pickupUser.name,
+        pickupId: pickup._id.toString().slice(-6),
+        status: status,
+        amount: pickup.amount
+      });
+    }
 
     res.status(200).json({ success: true, message: "Pickup status updated", pickup });
   } catch (error) {
@@ -198,6 +210,10 @@ const createCollector = async (req, res) => {
     const collector = await User.create({ 
       name, mobile, email, password, role: "collector", area, assignedCity 
     });
+
+    // Send Credentials via WhatsApp & SMS
+    await sendWelcomeCredentialsNotification({ name, mobile, role: "collector", password });
+
     res.status(201).json({ success: true, message: "Collector created", collector });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -277,6 +293,10 @@ const createUser = async (req, res) => {
     const user = await User.create({ 
       name, mobile, email, password, role: "user", address 
     });
+
+    // Send Credentials via WhatsApp & SMS
+    await sendWelcomeCredentialsNotification({ name, mobile, role: "user", password });
+
     res.status(201).json({ success: true, message: "User created", user });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -328,6 +348,10 @@ const createFranchise = async (req, res) => {
     if (exists) return res.status(400).json({ success: false, message: "Mobile number already registered" });
 
     const franchise = await User.create({ name, mobile, email, password, role: "franchise", assignedCity });
+
+    // Send Credentials via WhatsApp & SMS
+    await sendWelcomeCredentialsNotification({ name, mobile, role: "franchise", password });
+
     res.status(201).json({ success: true, message: "Franchise created", franchise });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
