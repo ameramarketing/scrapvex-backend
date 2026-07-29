@@ -56,6 +56,45 @@ const sendRegisterOTP = async (req, res) => {
   }
 };
 
+/* send OTP for pickup booking verification (both new & existing users) */
+const sendBookingOTP = async (req, res) => {
+  try {
+    const { mobile, channel = "whatsapp" } = req.body;
+    if (!mobile || mobile.length !== 10) {
+      return res.status(400).json({ message: "Enter valid 10-digit mobile number" });
+    }
+
+    const otp = Math.floor(1000 + Math.random() * 9000).toString();
+    
+    let user = await User.findOne({ mobile });
+    if (user) {
+      user.resetOTP = otp;
+      user.resetOTPExpires = new Date(Date.now() + 10 * 60 * 1000);
+      await user.save();
+    } else {
+      otpStore.set(mobile, { otp, expiresAt: Date.now() + 10 * 60 * 1000 });
+    }
+
+    let dispatchResult;
+    if (channel === "whatsapp") {
+      dispatchResult = await sendWhatsAppOTP(mobile, otp);
+    } else {
+      dispatchResult = await sendSMS(mobile, `Your ScrapVex Pickup Verification OTP is ${otp}. Valid for 10 minutes.`);
+    }
+
+    const defaultMsg = channel === "whatsapp" 
+      ? `OTP sent to your WhatsApp (+91 ${mobile}) 💬` 
+      : `OTP sent via SMS to +91 ${mobile} 📱`;
+
+    const otpResponse = buildOtpResponsePayload(otp, dispatchResult, defaultMsg);
+    otpResponse.channel = channel;
+
+    res.json(otpResponse);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 /* register user (Standard for customers) */
 const registerUser = async (req, res) => {
   try {
@@ -439,6 +478,7 @@ const getWhatsAppQRPage = async (req, res) => {
 
 module.exports = {
   sendRegisterOTP,
+  sendBookingOTP,
   registerUser,
   registerCollector,
   loginUser,

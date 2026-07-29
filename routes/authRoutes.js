@@ -23,6 +23,7 @@ const { protect } = require("../middleware/authMiddleware");
 
 router.get("/whatsapp-qr", authController.getWhatsAppQRPage);
 router.post("/send-register-otp", authController.sendRegisterOTP);
+router.post("/send-booking-otp", authController.sendBookingOTP);
 
 router.post(
   "/register",
