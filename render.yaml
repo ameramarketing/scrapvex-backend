@@ -3,7 +3,7 @@ services:
     name: scrapvex-backend
     env: node
     region: singapore
-    buildCommand: npm install
+    buildCommand: npx puppeteer browsers install chrome && npm install
     startCommand: npm start
     envVars:
       - key: PORT
@@ -12,3 +12,5 @@ services:
         value: mongodb+srv://amjadkhan33411_db_user:06032001@cluster0.dgccilx.mongodb.net/scrapvex?retryWrites=true&w=majority
       - key: JWT_SECRET
         value: scrapvex_secret_key_2026_jk_digital
+      - key: PUPPETEER_SKIP_CHROMIUM_DOWNLOAD
+        value: "false"

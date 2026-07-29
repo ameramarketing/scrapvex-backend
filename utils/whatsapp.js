@@ -5,7 +5,7 @@ const fs = require('fs');
 let client;
 let isReady = false;
 let currentQrCodeUrl = "";
-let connectionStatus = "Disconnected (Waiting for QR Scan)";
+let connectionStatus = "Disconnected (Generating QR Code...)";
 
 // Detect local Google Chrome executable on Windows
 let chromePath;
@@ -16,11 +16,12 @@ if (fs.existsSync('C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'))
 }
 
 /**
- * Initializes local WhatsApp Web Client with Session Storage
+ * Initializes local/cloud WhatsApp Web Client with Session Storage
  */
 const initWhatsAppClient = () => {
   try {
     const { Client, LocalAuth } = require('whatsapp-web.js');
+    const puppeteer = require('puppeteer');
     
     const puppeteerOptions = {
       headless: true,
@@ -32,12 +33,22 @@ const initWhatsAppClient = () => {
         '--no-first-run',
         '--no-zygote',
         '--disable-gpu',
-        '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+        '--single-process'
       ]
     };
 
-    if (chromePath) {
-      puppeteerOptions.executablePath = chromePath;
+    try {
+      // Use downloaded puppeteer executable path if available
+      const execPath = puppeteer.executablePath();
+      if (execPath && fs.existsSync(execPath)) {
+        puppeteerOptions.executablePath = execPath;
+      } else if (chromePath && fs.existsSync(chromePath)) {
+        puppeteerOptions.executablePath = chromePath;
+      }
+    } catch (e) {
+      if (chromePath && fs.existsSync(chromePath)) {
+        puppeteerOptions.executablePath = chromePath;
+      }
     }
 
     client = new Client({
@@ -52,7 +63,7 @@ const initWhatsAppClient = () => {
     client.on('qr', async (qr) => {
       connectionStatus = "Waiting for Scan";
       console.log('\n======================================================');
-      console.log('📲 SCAN THIS QR CODE IN YOUR BROWSER AT: http://localhost:5000/api/auth/whatsapp-qr');
+      console.log('📲 WHATSAPP QR CODE GENERATED SUCCESSFULLY!');
       console.log('======================================================\n');
 
       try {
@@ -86,7 +97,7 @@ const initWhatsAppClient = () => {
     });
 
     client.initialize().catch(err => {
-      console.warn("WhatsApp Web Client Notice (Cloud Mode):", err.message);
+      console.warn("WhatsApp Web Client Init Error:", err.message);
     });
   } catch (err) {
     console.warn("whatsapp-web.js module loading notice:", err.message);
