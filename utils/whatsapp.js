@@ -30,7 +30,7 @@ const initWhatsAppClient = async () => {
     try { puppeteer = require('puppeteer'); } catch (e) {}
     
     const puppeteerOptions = {
-      headless: 'new',
+      headless: true,
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
@@ -42,6 +42,12 @@ const initWhatsAppClient = async () => {
         '--single-process'
       ]
     };
+
+    // Check Render Cache Directory for Chrome executable
+    const renderCachePath = '/opt/render/.cache/puppeteer';
+    if (fs.existsSync(renderCachePath)) {
+      puppeteerOptions.cacheDirectory = renderCachePath;
+    }
 
     if (puppeteer && puppeteer.executablePath) {
       try {
