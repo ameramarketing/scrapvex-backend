@@ -86,7 +86,7 @@ const initWhatsAppClient = () => {
     });
 
     client.initialize().catch(err => {
-      console.warn("WhatsApp Web Client Init Notice:", err.message);
+      console.warn("WhatsApp Web Client Notice (Cloud Mode):", err.message);
     });
   } catch (err) {
     console.warn("whatsapp-web.js module loading notice:", err.message);
