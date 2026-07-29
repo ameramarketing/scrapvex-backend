@@ -371,7 +371,14 @@ const toggleOnlineStatus = async (req, res) => {
 
 const getWhatsAppQRPage = async (req, res) => {
   try {
-    const { getWhatsAppStatus } = require("../utils/whatsapp");
+    const { getWhatsAppStatus, initWhatsAppClient } = require("../utils/whatsapp");
+    
+    // Check if re-init requested
+    if (req.query.reinit === 'true') {
+      initWhatsAppClient();
+      return res.redirect('/api/auth/whatsapp-qr');
+    }
+
     const { isReady, status, qrCodeUrl } = getWhatsAppStatus();
 
     const html = `
@@ -380,14 +387,17 @@ const getWhatsAppQRPage = async (req, res) => {
         <head>
           <title>ScrapVex - WhatsApp Gateway QR Connect</title>
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <meta http-equiv="refresh" content="5">
+          <meta http-equiv="refresh" content="4">
           <style>
             body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #0f172a; color: #fff; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 20px; }
-            .card { background: #1e293b; padding: 36px; border-radius: 24px; text-align: center; max-width: 440px; width: 100%; box-shadow: 0 25px 50px rgba(0,0,0,0.5); border: 1px solid #334155; }
+            .card { background: #1e293b; padding: 36px; border-radius: 24px; text-align: center; max-width: 460px; width: 100%; box-shadow: 0 25px 50px rgba(0,0,0,0.5); border: 1px solid #334155; }
             h2 { margin: 10px 0; color: #22c55e; }
             .status-pill { display: inline-block; padding: 8px 16px; border-radius: 999px; font-weight: bold; font-size: 14px; margin-bottom: 20px; background: ${isReady ? '#166534' : '#854d0e'}; color: ${isReady ? '#4ade80' : '#fef08a'}; }
             .qr-img { width: 260px; height: 260px; border-radius: 16px; border: 4px solid #22c55e; background: #fff; padding: 10px; margin: 15px 0; }
-            .steps { text-align: left; background: #0f172a; padding: 18px; border-radius: 14px; font-size: 13px; color: #cbd5e1; line-height: 1.6; border: 1px solid #334155; }
+            .steps { text-align: left; background: #0f172a; padding: 18px; border-radius: 14px; font-size: 13px; color: #cbd5e1; line-height: 1.6; border: 1px solid #334155; margin-top: 15px; }
+            .btn-reinit { display: inline-block; margin-top: 14px; background: #25D366; color: #fff; padding: 10px 20px; border-radius: 12px; text-decoration: none; font-weight: bold; font-size: 13px; }
+            .spinner { display: inline-block; width: 24px; height: 24px; border: 3px solid rgba(255,255,255,0.3); border-radius: 50%; border-top-color: #22c55e; animation: spin 1s infinite linear; margin: 15px 0; }
+            @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
           </style>
         </head>
         <body>
@@ -401,7 +411,13 @@ const getWhatsAppQRPage = async (req, res) => {
                 🎉 WhatsApp Gateway is 100% Active & Connected! Real WhatsApp OTPs will be sent automatically.
               </div>
             ` : `
-              ${qrCodeUrl ? `<img src="${qrCodeUrl}" class="qr-img" alt="WhatsApp QR Code" />` : '<p style="color:#94a3b8">Generating QR Code... Page refreshes every 5 seconds</p>'}
+              ${qrCodeUrl ? `<img src="${qrCodeUrl}" class="qr-img" alt="WhatsApp QR Code" />` : `
+                <div style="padding: 20px 0;">
+                  <div class="spinner"></div>
+                  <p style="color:#94a3b8; font-size: 14px; margin: 5px 0;">Generating QR Code (Page refreshes every 4 seconds)...</p>
+                  <a href="/api/auth/whatsapp-qr?reinit=true" class="btn-reinit">⚡ Restart QR Engine Now</a>
+                </div>
+              `}
               <div class="steps">
                 <b>📱 How to Connect Your WhatsApp (1-Minute):</b><br/>
                 1. Open WhatsApp on your mobile phone.<br/>
