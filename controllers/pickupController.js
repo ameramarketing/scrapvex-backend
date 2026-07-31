@@ -440,7 +440,38 @@ const updatePickupStatusCollector = async (req, res) => {
     if (status === "Completed") {
       const finalAmount = Number(amount || pickup.amount || 0);
       const user = pickup.user ? await User.findById(pickup.user) : null;
-      
+      const collectorUser = await User.findById(req.user._id);
+
+      // PRE-CHECK WALLET MODE FUNDS BEFORE MUTATING DB OR CREATING TRANSACTIONS
+      let franchise = null;
+      let collectorCover = 0;
+      let remainingAmount = 0;
+
+      if (!isCashMode) {
+        if (!collectorUser) {
+          return res.status(400).json({ success: false, message: "Collector user profile not found." });
+        }
+        collectorCover = Math.min(collectorUser.walletBalance, finalAmount);
+        remainingAmount = finalAmount - collectorCover;
+
+        if (remainingAmount > 0) {
+          franchise = await User.findOne({ 
+            role: "franchise", 
+            assignedCity: { $regex: new RegExp(`^${pickup.city}$`, "i") } 
+          });
+          if (!franchise) {
+            return res.status(400).json({ success: false, message: "No franchise is available to fund this pickup." });
+          }
+          if (franchise.walletBalance < remainingAmount) {
+            return res.status(400).json({ 
+              success: false, 
+              message: `Franchise (${franchise.name}) has insufficient balance (Available: ₹${franchise.walletBalance}). Please use Cash mode or ask collector to add funds.` 
+            });
+          }
+        }
+      }
+
+      // NOW THAT ALL PRE-CHECKS PASSED, MUTATE BALANCES AND CREATE TRANSACTIONS SAFELY!
       if (user) {
         const transaction = await WalletTransaction.findOne({ pickupId: pickup._id, status: "pending", user: user._id });
 
@@ -454,7 +485,7 @@ const updatePickupStatusCollector = async (req, res) => {
             transaction.description = `Paid in Cash for pickup #${pickup._id.toString().slice(-6)}`;
             await transaction.save();
           }
-          // Note: Paid in Cash directly, so user.walletBalance IS NOT INCREMENTED!
+          // Cash mode: Paid directly in cash to user, user.walletBalance IS NOT MODIFIED!
         } else {
           if (transaction) {
             transaction.amount = finalAmount;
@@ -479,7 +510,6 @@ const updatePickupStatusCollector = async (req, res) => {
         await user.save();
       }
 
-      const collectorUser = await User.findById(req.user._id);
       if (collectorUser) {
         let commissionRate = 0.05; // fallback 5%
         const settings = await Settings.findOne();
@@ -502,14 +532,6 @@ const updatePickupStatusCollector = async (req, res) => {
             pickupId: pickup._id
           });
         } else {
-          const franchise = await User.findOne({ 
-            role: "franchise", 
-            assignedCity: { $regex: new RegExp(`^${pickup.city}$`, "i") } 
-          });
-
-          const collectorCover = Math.min(collectorUser.walletBalance, finalAmount);
-          const remainingAmount = finalAmount - collectorCover;
-
           if (collectorCover > 0) {
             collectorUser.walletBalance -= collectorCover;
             await WalletTransaction.create({
@@ -523,17 +545,7 @@ const updatePickupStatusCollector = async (req, res) => {
             });
           }
 
-          if (remainingAmount > 0) {
-            if (!franchise) {
-              return res.status(400).json({ success: false, message: "No franchise is available to fund this pickup." });
-            }
-            if (franchise.walletBalance < remainingAmount) {
-              return res.status(400).json({ 
-                success: false, 
-                message: `Franchise (${franchise.name}) has insufficient balance (Available: ₹${franchise.walletBalance}). Please use Cash mode or ask collector to add funds.` 
-              });
-            }
-
+          if (remainingAmount > 0 && franchise) {
             franchise.walletBalance -= remainingAmount;
             await franchise.save();
 
