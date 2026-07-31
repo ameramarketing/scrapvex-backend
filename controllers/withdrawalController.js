@@ -112,12 +112,30 @@ const processWithdrawal = async (req, res) => {
     withdrawal.transactionId = transactionId || "";
     await withdrawal.save();
 
-    // 5. Notify the User
+    // 5. Notify the User via In-App & WhatsApp
     const { createNotify } = require("./notificationController");
+    const { sendWithdrawalStatusNotification } = require("../utils/notifier");
+
+    const targetUser = await User.findById(withdrawal.user);
+
     if (status === "Completed") {
       createNotify(withdrawal.user, "User", "Withdrawal Successful", `Your payout of ₹${withdrawal.amount} has been processed. Ref: ${transactionId || "N/A"}`, "success");
     } else if (status === "Rejected") {
       createNotify(withdrawal.user, "User", "Withdrawal Rejected", `Your payout of ₹${withdrawal.amount} was rejected. Reason: ${adminNote || "N/A"}. Funds refunded.`, "error");
+    }
+
+    if (targetUser && targetUser.mobile) {
+      try {
+        await sendWithdrawalStatusNotification({
+          mobile: targetUser.mobile,
+          name: targetUser.name,
+          amount: withdrawal.amount,
+          upiId: withdrawal.bankDetails?.upiId || "UPI/Bank",
+          status: status === "Completed" ? "APPROVED" : "REJECTED"
+        });
+      } catch (waErr) {
+        console.error("WhatsApp withdrawal status notification error:", waErr.message);
+      }
     }
 
     res.status(200).json({ success: true, message: `Withdrawal ${status}`, withdrawal });

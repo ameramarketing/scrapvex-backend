@@ -6,7 +6,7 @@ const ScrapItem = require("../models/ScrapItem");
 const CityRate = require("../models/CityRate");
 const WalletTransaction = require("../models/WalletTransaction");
 const { createNotify } = require("./notificationController");
-const { sendWelcomeCredentialsNotification, sendPickupTransactionNotification } = require("../utils/notifier");
+const { sendWelcomeCredentialsNotification, sendPickupTransactionNotification, sendWalletCreditNotification } = require("../utils/notifier");
 
 /* ===============================
    GET DASHBOARD STATS
@@ -634,6 +634,21 @@ const updateUserWallet = async (req, res) => {
       description: description || (req.user.role === "franchise" ? `Received funds from Franchise` : "Manual adjustment by Admin"),
       source: "transfer"
     });
+
+    // Send WhatsApp Alert on Credit
+    if (type === "credit" && targetUser.mobile) {
+      try {
+        await sendWalletCreditNotification({
+          mobile: targetUser.mobile,
+          name: targetUser.name,
+          amount: Number(amount),
+          pickupId: description || (req.user.role === "franchise" ? "Franchise Transfer" : "Admin Credit"),
+          newBalance: targetUser.walletBalance
+        });
+      } catch (e) {
+        console.error("WhatsApp wallet credit error:", e.message);
+      }
+    }
 
     res.status(200).json({ success: true, message: "Wallet updated successfully", balance: targetUser.walletBalance });
   } catch (error) {
