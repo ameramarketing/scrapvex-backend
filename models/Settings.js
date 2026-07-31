@@ -15,6 +15,9 @@ const settingsSchema = new mongoose.Schema({
 
   // NEW DYNAMIC BRAND & OPERATIONAL FIELDS
   brandLogo: { type: String, default: "" },
+  favicon: { type: String, default: "" },
+  appIcon: { type: String, default: "" },
+  heroBanner: { type: String, default: "" },
   brandTagline: { type: String, default: "Jammu & Kashmir Ka Pehla Digital Kabadiwala" },
   isMaintenanceMode: { type: Boolean, default: false },
   maintenanceMessage: { type: String, default: "ScrapVex is undergoing scheduled maintenance for upgraded services in J&K. We will be back shortly!" },

@@ -4,6 +4,7 @@ const User = require("../models/User");
 const WalletTransaction = require("../models/WalletTransaction");
 const Inventory = require("../models/Inventory");
 const Settings = require("../models/Settings");
+const AreaVote = require("../models/AreaVote");
 const { createNotify } = require("./notificationController");
 const { sendWhatsAppOTP } = require("../utils/whatsapp");
 const { sendCollectorOnTheWayNotification, sendPickupCompletedReceiptNotification } = require("../utils/notifier");
@@ -83,7 +84,8 @@ const createPickup = async (req, res) => {
       user: user._id, name, mobile, address, city, pincode: pincode || 0,
       scrapType, weight: weight || 0, items: items || [],
       pickupDate: pickupDate || new Date(), pickupTime: pickupTime || "",
-      latitude: latitude || 0, longitude: longitude || 0,
+      latitude: latitude || req.body.lat || 0, longitude: longitude || req.body.lng || 0,
+      lat: req.body.lat || latitude || null, lng: req.body.lng || longitude || null,
       notes: notes || "", status: "Pending", amount: req.body.amount || 0
     });
 
@@ -722,6 +724,24 @@ const getActiveCities = async (req, res) => {
   }
 };
 
+const voteArea = async (req, res) => {
+  try {
+    const { area, mobile } = req.body;
+    if (!area) return res.status(400).json({ success: false, message: "Area name is required" });
+
+    await AreaVote.create({ area, userMobile: mobile || "", ip: req.ip || "" });
+    const votesCount = await AreaVote.countDocuments({ area: { $regex: new RegExp(`^${area}$`, "i") } });
+
+    res.status(200).json({
+      success: true,
+      message: `Vote recorded for ${area}! We are planning service expansion.`,
+      votesCount
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 module.exports = {
   createPickup,
   getMyPickups,
@@ -731,5 +751,6 @@ module.exports = {
   getAvailablePickups,
   updatePickupStatusCollector,
   generateOTP,
-  getActiveCities
+  getActiveCities,
+  voteArea
 };

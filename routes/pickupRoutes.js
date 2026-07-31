@@ -11,7 +11,8 @@ const {
   getAvailablePickups,
   updatePickupStatusCollector,
   generateOTP,
-  getActiveCities
+  getActiveCities,
+  voteArea
 } = require("../controllers/pickupController");
 
 const { protect } = require("../middleware/authMiddleware");
@@ -29,6 +30,7 @@ router.put("/collector/status/:id", protect, updatePickupStatusCollector);
 
 /* Get Active Cities (Cities with franchises) */
 router.get("/active-cities", getActiveCities);
+router.post("/vote-area", voteArea);
 
 /* Create New Pickup (Public/Guest allowed) */
 router.post("/create", createPickup);

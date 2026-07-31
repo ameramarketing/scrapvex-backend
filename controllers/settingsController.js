@@ -22,6 +22,20 @@ exports.updateSettings = async (req, res) => {
     if (req.file) {
       updateData.brandLogo = `/uploads/${req.file.filename}`;
     }
+    if (req.files) {
+      if (req.files.brandLogo && req.files.brandLogo[0]) {
+        updateData.brandLogo = `/uploads/${req.files.brandLogo[0].filename}`;
+      }
+      if (req.files.favicon && req.files.favicon[0]) {
+        updateData.favicon = `/uploads/${req.files.favicon[0].filename}`;
+      }
+      if (req.files.appIcon && req.files.appIcon[0]) {
+        updateData.appIcon = `/uploads/${req.files.appIcon[0].filename}`;
+      }
+      if (req.files.heroBanner && req.files.heroBanner[0]) {
+        updateData.heroBanner = `/uploads/${req.files.heroBanner[0].filename}`;
+      }
+    }
 
     if (!settings) {
       settings = await Settings.create(updateData);

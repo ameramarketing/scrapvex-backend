@@ -18,6 +18,17 @@ const storage = multer.diskStorage({
 const upload = multer({ storage: storage });
 
 router.get("/", getSettings);
-router.put("/", protect, authorize("admin"), upload.single("brandLogo"), updateSettings);
+router.put(
+  "/", 
+  protect, 
+  authorize("admin"), 
+  upload.fields([
+    { name: "brandLogo", maxCount: 1 },
+    { name: "favicon", maxCount: 1 },
+    { name: "appIcon", maxCount: 1 },
+    { name: "heroBanner", maxCount: 1 }
+  ]), 
+  updateSettings
+);
 
 module.exports = router;
