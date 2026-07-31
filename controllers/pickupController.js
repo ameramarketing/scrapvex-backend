@@ -521,13 +521,16 @@ const updatePickupStatusCollector = async (req, res) => {
 
         if (isCashMode) {
           // Cash mode: Collector paid customer in cash directly out of pocket.
-          // No wallet credit for collector payout.
+          // Credit collector's wallet with Cash Reimbursement.
+          collectorUser.walletBalance += finalAmount;
+          await collectorUser.save();
+
           await WalletTransaction.create({
             user: collectorUser._id,
             amount: finalAmount,
             type: "credit",
-            status: "paid_in_cash",
-            description: `Cash payment completed for pickup #${pickup._id.toString().slice(-6)}`,
+            status: "completed",
+            description: `Reimbursement for Cash paid for pickup #${pickup._id.toString().slice(-6)}`,
             source: "pickup",
             pickupId: pickup._id
           });
