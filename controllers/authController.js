@@ -265,14 +265,19 @@ const loginFranchise = async (req, res) => {
 const forgotPassword = async (req, res) => {
   try {
     const { mobile, channel = "whatsapp" } = req.body;
-    let person = await User.findOne({ mobile });
+    if (!mobile) return res.status(400).json({ success: false, message: "Mobile number is required" });
+
+    const cleanMobile = mobile.toString().replace(/\D/g, "").slice(-10);
+    let person = await User.findOne({ 
+      $or: [{ mobile: cleanMobile }, { mobile: `+91${cleanMobile}` }, { mobile: `91${cleanMobile}` }]
+    });
     
     // If person doesn't exist, create a guest account to save the OTP
     if (!person) {
       const name = req.body.name || "Guest User";
       person = await User.create({
         name,
-        mobile,
+        mobile: cleanMobile,
         password: "GuestUserPassword123!", // Dummy password
         role: "user"
       });
@@ -288,20 +293,20 @@ const forgotPassword = async (req, res) => {
     
     let dispatchResult;
     if (channel === "whatsapp") {
-      dispatchResult = await sendWhatsAppOTP(mobile, otp);
+      dispatchResult = await sendWhatsAppOTP(cleanMobile, otp);
     } else {
-      dispatchResult = await sendSMS(mobile, `Your ScrapVex verification OTP is: ${otp}. Valid for 10 minutes.`);
+      dispatchResult = await sendSMS(cleanMobile, `Your ScrapVex verification OTP is: ${otp}. Valid for 10 minutes.`);
     }
 
     const defaultMsg = channel === "whatsapp" 
-      ? `Password reset OTP sent to your WhatsApp (+91 ${mobile}) 💬` 
-      : `Password reset OTP sent via SMS to +91 ${mobile} 📱`;
+      ? `Password reset OTP sent to your WhatsApp (+91 ${cleanMobile}) 💬` 
+      : `Password reset OTP sent via SMS to +91 ${cleanMobile} 📱`;
 
     const otpResponse = buildOtpResponsePayload(otp, dispatchResult, defaultMsg);
     otpResponse.channel = channel;
     const whatsappMsgText = `🟢 *ScrapVex Verification Code*\n\nYour 4-Digit OTP Code is: *${otp}*\n\nValid for 10 minutes. Do not share with anyone.`;
     otpResponse.whatsappText = whatsappMsgText;
-    otpResponse.whatsappLink = `https://api.whatsapp.com/send?phone=91${mobile}&text=${encodeURIComponent(whatsappMsgText)}`;
+    otpResponse.whatsappLink = `https://api.whatsapp.com/send?phone=91${cleanMobile}&text=${encodeURIComponent(whatsappMsgText)}`;
     
     res.json(otpResponse);
   } catch (error) {

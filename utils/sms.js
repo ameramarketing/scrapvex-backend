@@ -44,10 +44,7 @@ const buildOtpResponsePayload = (otp, smsResult, defaultMessage) => {
   const smsSent = smsResult?.success === true;
   return {
     success: true,
-    message: smsSent
-      ? defaultMessage
-      : `SMS delivery failed (${smsResult?.error || "gateway error"}). Use the verification code below for testing instead.`,
-    debugOtp: otp,
+    message: defaultMessage,
     smsSent,
     ...(smsResult?.error ? { smsError: smsResult.error } : {}),
   };

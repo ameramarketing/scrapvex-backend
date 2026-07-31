@@ -2,6 +2,7 @@ const User = require("../models/User");
 const WalletTransaction = require("../models/WalletTransaction");
 const WithdrawalRequest = require("../models/WithdrawalRequest");
 const axios = require("axios");
+const { sendWhatsAppOTP } = require("../utils/whatsapp");
 
 // Get Wallet Balance and Transactions
 const getWalletInfo = async (req, res) => {
@@ -119,10 +120,17 @@ const generateWithdrawalOTP = async (req, res) => {
 
     console.log(`[SECURITY OTP] Wallet Withdrawal OTP for ${user.mobile} is: ${otp}`);
 
+    // DISPATCH WHATSAPP OTP TO USER!
+    const waText = `🟢 *ScrapVex Wallet Withdrawal OTP*\n\nDear *${user.name || 'User'}*,\nYour 4-Digit OTP to withdraw ₹${amount} from your ScrapVex Wallet to UPI (*${upiId || 'UPI Account'}*) is: *${otp}*\n\nValid for 10 minutes. Do not share this code with anyone.`;
+    try {
+      await sendWhatsAppOTP(user.mobile, waText);
+    } catch (e) {
+      console.error("Failed to send WhatsApp OTP for withdrawal:", e.message);
+    }
+
     res.status(200).json({
       success: true,
-      message: `OTP sent successfully to registered mobile number: ${user.mobile.substring(0, 3)}****${user.mobile.substring(7)}`,
-      otp // Return OTP for demo/development purposes so the user can easily see and copy it!
+      message: `OTP sent to your WhatsApp (+91 ${user.mobile}) 💬`
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });

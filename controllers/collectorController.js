@@ -96,15 +96,18 @@ const updatePickupStatus = async (req, res) => {
       const customerUser = await User.findById(pickup.user);
       const shortId = pickup._id.toString().slice(-6);
 
+      const targetMobile = (customerUser && customerUser.mobile) || pickup.mobile;
+      const customerName = (customerUser && customerUser.name) || pickup.name;
+
       if (status === "Accepted" || status === "OnTheWay") {
         // Notify Customer
         if (pickup.user) {
           createNotify(pickup.user, "User", "Collector On The Way", `Collector ${req.user.name} is on the way for your pickup request.`, "success");
         }
-        if (customerUser && customerUser.mobile) {
+        if (targetMobile) {
           await sendCollectorOnTheWayNotification({
-            customerMobile: customerUser.mobile,
-            customerName: customerUser.name,
+            customerMobile: targetMobile,
+            customerName: customerName,
             collectorName: req.user.name,
             pickupId: shortId
           });
@@ -115,10 +118,10 @@ const updatePickupStatus = async (req, res) => {
           createNotify(franchise._id, "User", "Pickup Accepted", `Collector ${req.user.name} accepted pickup #${shortId} in ${pickup.city}`, "info");
         }
       } else if (status === "Completed") {
-        if (customerUser && customerUser.mobile) {
+        if (targetMobile) {
           await sendPickupCompletedReceiptNotification({
-            customerMobile: customerUser.mobile,
-            customerName: customerUser.name,
+            customerMobile: targetMobile,
+            customerName: customerName,
             pickupId: shortId,
             totalWeight: pickup.weight,
             totalAmount: pickup.amount || 0,

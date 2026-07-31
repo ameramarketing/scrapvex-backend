@@ -5,6 +5,8 @@ const WalletTransaction = require("../models/WalletTransaction");
 const Inventory = require("../models/Inventory");
 const Settings = require("../models/Settings");
 const { createNotify } = require("./notificationController");
+const { sendWhatsAppOTP } = require("../utils/whatsapp");
+const { sendCollectorOnTheWayNotification, sendPickupCompletedReceiptNotification } = require("../utils/notifier");
 
 /* ==================================
    CREATE NEW PICKUP BOOKING
@@ -385,8 +387,8 @@ const generateOTP = async (req, res) => {
     
     await pickup.save();
 
-    const userId = pickup.user.toString();
-    const user = await User.findById(userId);
+    const userId = pickup.user ? pickup.user.toString() : null;
+    const user = userId ? await User.findById(userId) : null;
     if (user) {
       const summary = (items || []).map(i => `${i.name} (${i.quantity}${i.unit})`).join(", ");
       await createNotify(
@@ -398,7 +400,16 @@ const generateOTP = async (req, res) => {
       );
     }
 
-    res.status(200).json({ success: true, message: "OTP sent to customer dashboard" }); 
+    // Send Bill breakdown + OTP via WhatsApp
+    const targetMobile = (user && user.mobile) || pickup.mobile;
+    const targetName = (user && user.name) || pickup.name;
+    if (targetMobile) {
+      const itemsSummary = (items || []).map(i => `• ${i.name}: ${i.quantity} ${i.unit} @ ₹${i.price} = ₹${i.subtotal}`).join('\n');
+      const waMsg = `🟢 *ScrapVex Bill & Verification OTP*\n\nDear *${targetName}*,\nHere is the bill for your Pickup (#${pickup._id.toString().slice(-6)}):\n\n${itemsSummary}\n\n💰 *Total Amount*: ₹${amount}\n\n🔑 *Completion OTP*: *${otp}*\n\nPlease share this OTP with the collector ONLY after verifying items & total amount.`;
+      try { await sendWhatsAppOTP(targetMobile, waMsg); } catch (e) { console.error("WhatsApp OTP send error:", e.message); }
+    }
+
+    res.status(200).json({ success: true, message: "OTP & Bill sent to WhatsApp & Customer Dashboard" }); 
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -424,9 +435,11 @@ const updatePickupStatusCollector = async (req, res) => {
     if (items) pickup.items = items;
     pickup.collector = req.user._id;
 
+    const isCashMode = paymentMode && paymentMode.toString().toLowerCase() === "cash";
+
     if (status === "Completed") {
       const finalAmount = Number(amount || pickup.amount || 0);
-      const user = await User.findById(pickup.user);
+      const user = pickup.user ? await User.findById(pickup.user) : null;
       
       if (user) {
         const transaction = await WalletTransaction.findOne({ pickupId: pickup._id, status: "pending", user: user._id });
@@ -435,12 +448,13 @@ const updatePickupStatusCollector = async (req, res) => {
           user.pendingBalance = Math.max(0, user.pendingBalance - transaction.amount);
         }
 
-        if (paymentMode === "cash") {
+        if (isCashMode) {
           if (transaction) {
             transaction.status = "paid_in_cash";
             transaction.description = `Paid in Cash for pickup #${pickup._id.toString().slice(-6)}`;
             await transaction.save();
           }
+          // Note: Paid in Cash directly, so user.walletBalance IS NOT INCREMENTED!
         } else {
           if (transaction) {
             transaction.amount = finalAmount;
@@ -463,170 +477,171 @@ const updatePickupStatusCollector = async (req, res) => {
 
         user.pendingBalance = Math.max(0, user.pendingBalance || 0);
         await user.save();
+      }
 
-        const collectorUser = await User.findById(req.user._id);
-        if (collectorUser) {
-          let commissionRate = 0.05; // fallback 5%
-          const settings = await Settings.findOne();
-          if (settings && settings.pickupCommissionPercentage !== undefined) {
-             commissionRate = settings.pickupCommissionPercentage / 100;
-          }
-          const displayPercent = (commissionRate * 100).toFixed(1);
-          const commissionAmount = finalAmount * commissionRate;
-          const totalCollectorDue = finalAmount + commissionAmount;
+      const collectorUser = await User.findById(req.user._id);
+      if (collectorUser) {
+        let commissionRate = 0.05; // fallback 5%
+        const settings = await Settings.findOne();
+        if (settings && settings.pickupCommissionPercentage !== undefined) {
+           commissionRate = settings.pickupCommissionPercentage / 100;
+        }
+        const displayPercent = (commissionRate * 100).toFixed(1);
+        const commissionAmount = finalAmount * commissionRate;
 
-          if (paymentMode === "cash") {
-            // For cash payments: do not deduct from anyone — credit collector with full amount.
-            collectorUser.walletBalance += finalAmount;
-            await collectorUser.save();
+        if (isCashMode) {
+          // Cash mode: Collector paid customer in cash directly out of pocket.
+          // No wallet credit for collector payout.
+          await WalletTransaction.create({
+            user: collectorUser._id,
+            amount: finalAmount,
+            type: "credit",
+            status: "paid_in_cash",
+            description: `Cash payment completed for pickup #${pickup._id.toString().slice(-6)}`,
+            source: "pickup",
+            pickupId: pickup._id
+          });
+        } else {
+          const franchise = await User.findOne({ 
+            role: "franchise", 
+            assignedCity: { $regex: new RegExp(`^${pickup.city}$`, "i") } 
+          });
 
+          const collectorCover = Math.min(collectorUser.walletBalance, finalAmount);
+          const remainingAmount = finalAmount - collectorCover;
+
+          if (collectorCover > 0) {
+            collectorUser.walletBalance -= collectorCover;
             await WalletTransaction.create({
               user: collectorUser._id,
-              amount: finalAmount,
-              type: "credit",
+              amount: collectorCover,
+              type: "debit",
               status: "completed",
-              description: `Reimbursement for Cash paid for pickup #${pickup._id.toString().slice(-6)}`,
+              description: `Collector contribution for pickup #${pickup._id.toString().slice(-6)}`,
               source: "pickup",
               pickupId: pickup._id
             });
-            // commissionTakenFromCollector remains false for cash mode
-          } else {
-            const franchise = await User.findOne({ 
-              role: "franchise", 
-              assignedCity: { $regex: new RegExp(`^${pickup.city}$`, "i") } 
+          }
+
+          if (remainingAmount > 0) {
+            if (!franchise) {
+              return res.status(400).json({ success: false, message: "No franchise is available to fund this pickup." });
+            }
+            if (franchise.walletBalance < remainingAmount) {
+              return res.status(400).json({ 
+                success: false, 
+                message: `Franchise (${franchise.name}) has insufficient balance (Available: ₹${franchise.walletBalance}). Please use Cash mode or ask collector to add funds.` 
+              });
+            }
+
+            franchise.walletBalance -= remainingAmount;
+            await franchise.save();
+
+            await WalletTransaction.create({
+              user: franchise._id,
+              amount: remainingAmount,
+              type: "debit",
+              status: "completed",
+              description: `Funded remaining amount for pickup #${pickup._id.toString().slice(-6)} in ${pickup.city}`,
+              source: "pickup",
+              pickupId: pickup._id
             });
 
-            const collectorCover = Math.min(collectorUser.walletBalance, finalAmount);
-            const remainingAmount = finalAmount - collectorCover;
-
-            if (collectorCover > 0) {
-              collectorUser.walletBalance -= collectorCover;
-              await WalletTransaction.create({
-                user: collectorUser._id,
-                amount: collectorCover,
-                type: "debit",
-                status: "completed",
-                description: `Collector contribution for pickup #${pickup._id.toString().slice(-6)}`,
-                source: "pickup",
-                pickupId: pickup._id
-              });
-            }
-
-            if (remainingAmount > 0) {
-              if (!franchise) {
-                return res.status(400).json({ success: false, message: "No franchise is available to fund this pickup." });
-              }
-              if (franchise.walletBalance < remainingAmount) {
-                return res.status(400).json({ 
-                  success: false, 
-                  message: `Franchise (${franchise.name}) has insufficient balance (Available: ₹${franchise.walletBalance}). Please use Cash mode or ask collector to add funds.` 
-                });
-              }
-
-              franchise.walletBalance -= remainingAmount;
-              await franchise.save();
-
-              await WalletTransaction.create({
-                user: franchise._id,
-                amount: remainingAmount,
-                type: "debit",
-                status: "completed",
-                description: `Funded remaining amount for pickup #${pickup._id.toString().slice(-6)} in ${pickup.city}`,
-                source: "pickup",
-                pickupId: pickup._id
-              });
-
-              // Charge the collector for the remaining amount (collector owes this; wallet may go negative)
-              collectorUser.walletBalance -= remainingAmount;
-              await collectorUser.save();
-
-              await WalletTransaction.create({
-                user: collectorUser._id,
-                amount: remainingAmount,
-                type: "debit",
-                status: "completed",
-                description: `Collector liability for franchise-funded portion for pickup #${pickup._id.toString().slice(-6)}`,
-                source: "pickup",
-                pickupId: pickup._id
-              });
-            }
-
-            // commission will be applied after handling payment sources
-          }
-          // Apply admin commission: always debit collector (wallet may go negative) and credit admin
-          if (commissionAmount > 0) {
-            collectorUser.walletBalance -= commissionAmount;
+            // Charge the collector for the remaining amount
+            collectorUser.walletBalance -= remainingAmount;
             await collectorUser.save();
 
             await WalletTransaction.create({
               user: collectorUser._id,
-              amount: commissionAmount,
+              amount: remainingAmount,
               type: "debit",
               status: "completed",
-              description: `Admin Commission (${displayPercent}%) for pickup #${pickup._id.toString().slice(-6)}`,
+              description: `Collector liability for franchise-funded portion for pickup #${pickup._id.toString().slice(-6)}`,
+              source: "pickup",
+              pickupId: pickup._id
+            });
+          }
+        }
+
+        // Apply admin commission to collector
+        if (commissionAmount > 0) {
+          collectorUser.walletBalance -= commissionAmount;
+          await collectorUser.save();
+
+          await WalletTransaction.create({
+            user: collectorUser._id,
+            amount: commissionAmount,
+            type: "debit",
+            status: "completed",
+            description: `Admin Commission (${displayPercent}%) for pickup #${pickup._id.toString().slice(-6)}`,
+            source: "commission",
+            pickupId: pickup._id
+          });
+
+          const admin = await User.findOne({ role: "admin" });
+          if (admin) {
+            admin.walletBalance += commissionAmount;
+            await admin.save();
+
+            await WalletTransaction.create({
+              user: admin._id,
+              amount: commissionAmount,
+              type: "credit",
+              status: "completed",
+              description: `Commission (${displayPercent}%) from collector ${collectorUser.name} for pickup #${pickup._id.toString().slice(-6)}`,
               source: "commission",
               pickupId: pickup._id
             });
-
-            const admin = await User.findOne({ role: "admin" });
-            if (admin) {
-              admin.walletBalance += commissionAmount;
-              await admin.save();
-
-              await WalletTransaction.create({
-                user: admin._id,
-                amount: commissionAmount,
-                type: "credit",
-                status: "completed",
-                description: `Commission (${displayPercent}%) from collector ${collectorUser.name} for pickup #${pickup._id.toString().slice(-6)}`,
-                source: "commission",
-                pickupId: pickup._id
-              });
-              console.log(`[ADMIN COMMISSION] ₹${commissionAmount} credited to ${admin.name}`);
-            }
           }
         }
-
-        // 1. Notify User (Wallet Details)
-        createNotify(user._id, "User", "Pickup Completed", paymentMode === "cash" ? `Your pickup is complete. (Paid in Cash)` : `₹${finalAmount} added to your wallet for pickup.`, "success");
-        
-        // 2. Notify Collector (Simple Confirmation & Wallet Update)
-        if (paymentMode === "cash") {
-          createNotify(req.user._id, "User", "Wallet Credited", `₹${finalAmount} added to your wallet (Cash Reimbursement).`, "success");
-        } else {
-          createNotify(req.user._id, "User", "Wallet Updated", `₹${finalAmount} debited from your wallet for pickup #${pickup._id.toString().slice(-6)}.`, "info");
-          if (collectorUser.walletBalance < 0) {
-            createNotify(req.user._id, "User", "Negative Balance", `Your wallet balance is ₹${collectorUser.walletBalance.toFixed(2)}. Please settle with your franchise.`, "warning");
-          }
-        }
-        createNotify(req.user._id, "Collector", "Task Completed", `Pickup #${pickup._id.toString().slice(-6)} finalized successfully.`, "info");
-
-        // 3. Notify Regional Franchise
-        const regionalFranchises = await User.find({ 
-          role: "franchise", 
-          assignedCity: { $regex: new RegExp(`^${pickup.city}$`, "i") } 
-        });
-        regionalFranchises.forEach(franchise => {
-          createNotify(franchise._id, "User", "Pickup Completed", `Collector ${req.user.name} completed pickup #${pickup._id.toString().slice(-6)} for ₹${finalAmount}`, "success");
-        });
       }
-      pickup.status = "Completed";
 
-      // Inventory update removed from here. 
-      // Material enters inventory only when Franchise records a "Purchase" from the collector.
+      // In-app Notifications
+      if (user) {
+        createNotify(user._id, "User", "Pickup Completed", isCashMode ? `Your pickup is complete. (Paid in Cash ₹${finalAmount})` : `₹${finalAmount} added to your wallet for pickup.`, "success");
+      }
+      createNotify(req.user._id, "Collector", "Task Completed", `Pickup #${pickup._id.toString().slice(-6)} finalized successfully.`, "info");
+
+      // WHATSAPP COMPLETED RECEIPT NOTIFICATION TO CUSTOMER!
+      const targetMobile = (user && user.mobile) || pickup.mobile;
+      const targetName = (user && user.name) || pickup.name;
+      if (targetMobile) {
+        const calcWeight = items && items.length > 0 ? items.reduce((s, i) => s + (Number(i.quantity) || 0), 0) : pickup.weight;
+        try {
+          await sendPickupCompletedReceiptNotification({
+            customerMobile: targetMobile,
+            customerName: targetName,
+            pickupId: pickup._id.toString().slice(-6),
+            totalWeight: calcWeight,
+            totalAmount: finalAmount,
+            paymentMode: isCashMode ? "Cash" : "ScrapVex Wallet"
+          });
+        } catch (e) {
+          console.error("WhatsApp completed notification error:", e.message);
+        }
+      }
+
+      // Notify Regional Franchise
+      const regionalFranchises = await User.find({ 
+        role: "franchise", 
+        assignedCity: { $regex: new RegExp(`^${pickup.city}$`, "i") } 
+      });
+      regionalFranchises.forEach(franchise => {
+        createNotify(franchise._id, "User", "Pickup Completed", `Collector ${req.user.name} completed pickup #${pickup._id.toString().slice(-6)} for ₹${finalAmount}`, "success");
+      });
+
+      pickup.status = "Completed";
     } 
     else if (status === "Rejected") {
-      // If collector rejects, mark as Rejected but keep collector ID for their history
       pickup.status = "Rejected";
       pickup.collector = req.user._id;
     } 
     else if (status === "Cancelled") {
-      // Only if the pickup is actually CANCELLED (by user or admin), we remove pending balance
       const transaction = await WalletTransaction.findOne({ pickupId: pickup._id, status: "pending" });
       if (transaction) {
-        const user = await User.findById(pickup.user);
+        const user = pickup.user ? await User.findById(pickup.user) : null;
         if (user) {
-          user.pendingBalance -= transaction.amount;
+          user.pendingBalance = Math.max(0, user.pendingBalance - transaction.amount);
           await user.save();
         }
         transaction.status = "cancelled";
@@ -637,10 +652,27 @@ const updatePickupStatusCollector = async (req, res) => {
       pickup.status = "Accepted";
       pickup.collector = req.user._id;
       
-      // Notify User
-      createNotify(pickup.user, "User", "Pickup Accepted", `Collector ${req.user.name} has accepted your pickup request and is on the way!`, "success");
+      const user = pickup.user ? await User.findById(pickup.user) : null;
+      if (user) {
+        createNotify(user._id, "User", "Pickup Accepted", `Collector ${req.user.name} has accepted your pickup request and is on the way!`, "success");
+      }
 
-      // NEW: Notify Franchises
+      // WHATSAPP ACCEPTED NOTIFICATION TO CUSTOMER!
+      const targetMobile = (user && user.mobile) || pickup.mobile;
+      const targetName = (user && user.name) || pickup.name;
+      if (targetMobile) {
+        try {
+          await sendCollectorOnTheWayNotification({
+            customerMobile: targetMobile,
+            customerName: targetName,
+            collectorName: req.user.name,
+            pickupId: pickup._id.toString().slice(-6)
+          });
+        } catch (e) {
+          console.error("WhatsApp accept notification error:", e.message);
+        }
+      }
+
       const regionalFranchises = await User.find({ 
         role: "franchise", 
         assignedCity: { $regex: new RegExp(`^${pickup.city}$`, "i") } 
@@ -654,17 +686,7 @@ const updatePickupStatusCollector = async (req, res) => {
 
     await pickup.save();
 
-    // Notify Franchises on Completion
-    if (status === "Completed") {
-       const regionalFranchises = await User.find({ 
-         role: "franchise", 
-         assignedCity: { $regex: new RegExp(`^${pickup.city}$`, "i") } 
-       });
-       regionalFranchises.forEach(franchise => {
-         createNotify(franchise._id, "User", "Pickup Completed", `Collector ${req.user.name} completed pickup for ${pickup.name}. Amount: ₹${pickup.amount}`, "pickup_completed");
-       });
-    }
-    res.status(200).json({ success: true, pickup });
+    res.status(200).json({ success: true, message: "Status updated successfully", pickup });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

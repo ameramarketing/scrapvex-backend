@@ -78,7 +78,8 @@ const getWhatsAppStatus = () => {
  * Sends a WhatsApp Message or OTP Code with 4-second fail-safe timeout
  */
 const sendWhatsAppOTP = async (mobileNumber, otpOrMessage) => {
-  const formattedMobile = mobileNumber.startsWith('91') ? mobileNumber : `91${mobileNumber}`;
+  const cleanMobile = (mobileNumber || '').toString().replace(/\D/g, '');
+  const formattedMobile = cleanMobile.length === 10 ? `91${cleanMobile}` : cleanMobile;
   const chatId = `${formattedMobile}@s.whatsapp.net`;
 
   let messageText = otpOrMessage;
@@ -119,11 +120,10 @@ const sendWhatsAppOTP = async (mobileNumber, otpOrMessage) => {
   }
 
   // 3. FALLBACK / SIMULATED READY FOR QR SCAN
-  console.log(`💬 [WhatsApp Gateway Ready] OTP for +${formattedMobile}: ${otpOrMessage}`);
+  console.log(`💬 [WhatsApp Gateway Ready] Message for +${formattedMobile}: ${otpOrMessage}`);
   return { 
     success: true, 
     method: "whatsapp_simulated", 
-    debugOtp: /^\d{4}$/.test(otpOrMessage) ? otpOrMessage : undefined,
     note: isReady ? "Message dispatched" : "Scan QR code on screen to link your WhatsApp" 
   };
 };
