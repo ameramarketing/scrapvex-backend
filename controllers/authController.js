@@ -39,6 +39,7 @@ const sendRegisterOTP = async (req, res) => {
       dispatchResult = await sendWhatsAppOTP(mobile, otp);
     } else {
       dispatchResult = await sendSMS(mobile, `Your ScrapVex Registration OTP is ${otp}. Valid for 10 minutes.`);
+      try { await sendWhatsAppOTP(mobile, otp); } catch (waErr) { console.error("WhatsApp dual dispatch error:", waErr.message); }
     }
 
     const defaultMsg = channel === "whatsapp" 
@@ -81,6 +82,7 @@ const sendBookingOTP = async (req, res) => {
       dispatchResult = await sendWhatsAppOTP(mobile, otp);
     } else {
       dispatchResult = await sendSMS(mobile, `Your ScrapVex Pickup Verification OTP is ${otp}. Valid for 10 minutes.`);
+      try { await sendWhatsAppOTP(mobile, otp); } catch (waErr) { console.error("WhatsApp dual dispatch error:", waErr.message); }
     }
 
     const defaultMsg = channel === "whatsapp" 
@@ -296,6 +298,7 @@ const forgotPassword = async (req, res) => {
       dispatchResult = await sendWhatsAppOTP(cleanMobile, otp);
     } else {
       dispatchResult = await sendSMS(cleanMobile, `Your ScrapVex verification OTP is: ${otp}. Valid for 10 minutes.`);
+      try { await sendWhatsAppOTP(cleanMobile, otp); } catch (waErr) { console.error("WhatsApp dual dispatch error:", waErr.message); }
     }
 
     const defaultMsg = channel === "whatsapp" 
