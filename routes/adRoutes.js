@@ -15,7 +15,16 @@ const upload = multer({ storage });
 const { protect, authorize } = require("../middleware/authMiddleware");
 
 router.get("/", getAds);
-router.post("/", protect, authorize("admin"), upload.single("image"), createAd);
+router.post(
+  "/", 
+  protect, 
+  authorize("admin"), 
+  upload.fields([
+    { name: "image", maxCount: 1 },
+    { name: "mobileImage", maxCount: 1 }
+  ]), 
+  createAd
+);
 router.delete("/:id", protect, authorize("admin"), deleteAd);
 router.patch("/:id/toggle", protect, authorize("admin"), toggleAd);
 

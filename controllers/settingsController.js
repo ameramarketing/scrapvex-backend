@@ -35,6 +35,9 @@ exports.updateSettings = async (req, res) => {
       if (req.files.heroBanner && req.files.heroBanner[0]) {
         updateData.heroBanner = `/uploads/${req.files.heroBanner[0].filename}`;
       }
+      if (req.files.mobileHeroBanner && req.files.mobileHeroBanner[0]) {
+        updateData.mobileHeroBanner = `/uploads/${req.files.mobileHeroBanner[0].filename}`;
+      }
     }
 
     if (!settings) {

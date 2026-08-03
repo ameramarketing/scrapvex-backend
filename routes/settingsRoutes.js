@@ -26,7 +26,8 @@ router.put(
     { name: "brandLogo", maxCount: 1 },
     { name: "favicon", maxCount: 1 },
     { name: "appIcon", maxCount: 1 },
-    { name: "heroBanner", maxCount: 1 }
+    { name: "heroBanner", maxCount: 1 },
+    { name: "mobileHeroBanner", maxCount: 1 }
   ]), 
   updateSettings
 );

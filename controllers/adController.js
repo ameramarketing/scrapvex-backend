@@ -13,9 +13,26 @@ exports.getAds = async (req, res) => {
 // CREATE AD
 exports.createAd = async (req, res) => {
   try {
+    const backendHost = process.env.BACKEND_URL || 'http://localhost:5000';
+    let imageUrl = req.body.imageUrl || "";
+    let mobileImageUrl = req.body.mobileImageUrl || "";
+
+    if (req.file) {
+      imageUrl = `${backendHost}/uploads/${req.file.filename}`;
+    }
+    if (req.files) {
+      if (req.files.image && req.files.image[0]) {
+        imageUrl = `${backendHost}/uploads/${req.files.image[0].filename}`;
+      }
+      if (req.files.mobileImage && req.files.mobileImage[0]) {
+        mobileImageUrl = `${backendHost}/uploads/${req.files.mobileImage[0].filename}`;
+      }
+    }
+
     const adData = {
       ...req.body,
-      imageUrl: req.file ? `${process.env.BACKEND_URL || 'http://localhost:5000'}/uploads/${req.file.filename}` : req.body.imageUrl
+      imageUrl,
+      mobileImageUrl: mobileImageUrl || imageUrl // Fallback to desktop image if mobile image is not uploaded
     };
     const ad = await Ad.create(adData);
     res.status(201).json({ success: true, data: ad });
