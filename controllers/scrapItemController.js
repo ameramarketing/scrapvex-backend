@@ -7,12 +7,45 @@ const User = require("../models/User");
 // @access  Public
 exports.getScrapItems = async (req, res) => {
   try {
-    const city = req.query.city ? req.query.city.toLowerCase() : "";
-    // Use .lean() to get plain JS objects
-    const items = await ScrapItem.find({ isActive: true }).lean();
+    const city = req.query.city ? req.query.city.trim().toLowerCase() : "";
+    let items = await ScrapItem.find({ isActive: { $ne: false } }).lean();
+
+    // Auto-seed comprehensive scrap items list if DB has incomplete list
+    if (items.length < 15) {
+      const defaultItemsToSeed = [
+        { name: "Office Paper", category: "Paper", price: 14, unit: "kg" },
+        { name: "Newspaper", category: "Paper", price: 15, unit: "kg" },
+        { name: "Books", category: "Paper", price: 12, unit: "kg" },
+        { name: "Cardboard", category: "Paper", price: 8, unit: "kg" },
+        { name: "Iron / Loha", category: "Metal", price: 25, unit: "kg" },
+        { name: "Steel", category: "Metal", price: 42, unit: "kg" },
+        { name: "Copper / Tamba", category: "Metal", price: 505, unit: "kg" },
+        { name: "Brass / Peetal", category: "Metal", price: 325, unit: "kg" },
+        { name: "Aluminium", category: "Metal", price: 112, unit: "kg" },
+        { name: "Plastic", category: "Plastic", price: 5, unit: "kg" },
+        { name: "Pet Bottles", category: "Plastic", price: 10, unit: "kg" },
+        { name: "Semi Auto Washing Machine", category: "Appliances", price: 800, unit: "unit" },
+        { name: "Single Door Fridge", category: "Appliances", price: 1100, unit: "unit" },
+        { name: "AC 1.5 Ton", category: "Appliances", price: 4500, unit: "unit" },
+        { name: "Inverter Battery", category: "Appliances", price: 81, unit: "kg" },
+        { name: "Laptop", category: "Electronic", price: 500, unit: "unit" },
+        { name: "Computer CPU", category: "Electronic", price: 400, unit: "unit" },
+        { name: "Bike / Scooter Scrap", category: "Vehicles", price: 3500, unit: "unit" },
+        { name: "Car Scrap", category: "Vehicles", price: 18000, unit: "unit" }
+      ];
+
+      for (const item of defaultItemsToSeed) {
+        await ScrapItem.updateOne(
+          { name: item.name },
+          { $setOnInsert: item },
+          { upsert: true }
+        );
+      }
+      items = await ScrapItem.find({ isActive: { $ne: false } }).lean();
+    }
     
     if (city) {
-      const cityRates = await CityRate.find({ city }).lean();
+      const cityRates = await CityRate.find({ city: new RegExp(`^${city}$`, "i") }).lean();
       const mergedItems = items.map(item => {
         const cityRate = cityRates.find(cr => cr.scrapItem.toString() === item._id.toString());
         if (cityRate) {
