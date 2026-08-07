@@ -24,8 +24,11 @@ const initWhatsAppClient = async () => {
       auth: state,
       printQRInTerminal: false,
       browser: ['ScrapVex Gateway', 'Chrome', '1.0.0'],
-      connectTimeoutMs: 15000,
-      defaultQueryTimeoutMs: 10000
+      connectTimeoutMs: 25000,
+      defaultQueryTimeoutMs: 15000,
+      keepAliveIntervalMs: 25000,
+      markOnlineOnConnect: true,
+      syncFullHistory: false
     });
 
     socket.ev.on('creds.update', saveCreds);
