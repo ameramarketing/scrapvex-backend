@@ -143,7 +143,7 @@ const createPickup = async (req, res) => {
 
       // Send Admin WhatsApp Notification
       const platformSettings = await Settings.findOne();
-      const adminPhone = platformSettings?.contactPhone || process.env.ADMIN_WHATSAPP || "9086038222";
+      const adminPhone = platformSettings?.contactPhone || process.env.ADMIN_WHATSAPP || "8491028539";
       if (adminPhone) {
         await sendAdminNewPickupNotification({
           adminMobile: adminPhone,

@@ -177,7 +177,7 @@ const sendCollectorPurchaseReceiptNotification = async ({ collectorMobile, colle
 /**
  * 13. New Wallet Deposit Alert to Admin
  */
-const sendAdminNewDepositNotification = async ({ adminMobile = "9086038222", name, mobile, role, amount, upiRefNo }) => {
+const sendAdminNewDepositNotification = async ({ adminMobile = "8491028539", name, mobile, role, amount, upiRefNo }) => {
   if (!adminMobile) return;
   const waText = `🟢 *NEW WALLET DEPOSIT REQUEST RECEIVED!*\n\nHello Admin,\nA user has submitted a wallet deposit payment:\n\n👤 *Name*: ${name || 'Partner'}\n📱 *Mobile*: +91 ${mobile}\n🏷️ *Role*: ${(role || 'User').toUpperCase()}\n💰 *Amount*: ₹${amount}\n🔗 *12-Digit UTR / Ref No*: *${upiRefNo}*\n\nPlease check Admin Dashboard to verify UTR and Approve/Reject!`;
   const smsText = `ScrapVex Admin Alert: New Deposit Request of RS ${amount} by ${name} (Ph: ${mobile}, UTR: ${upiRefNo}). Check dashboard to approve!`;

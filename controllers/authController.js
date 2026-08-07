@@ -244,7 +244,7 @@ const loginAdmin = async (req, res) => {
       // Auto-create default admin if missing
       user = await User.create({
         name: "Amjad Khan (Admin)",
-        mobile: "9086038222",
+        mobile: "8491028539",
         email: "admin@scrapvex.com",
         password: password || "admin123",
         role: "admin",

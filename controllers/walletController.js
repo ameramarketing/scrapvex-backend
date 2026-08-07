@@ -276,7 +276,7 @@ const initiateDeposit = async (req, res) => {
       const user = await User.findById(req.user._id);
       const { sendAdminNewDepositNotification } = require("../utils/notifier");
       await sendAdminNewDepositNotification({
-        adminMobile: "9086038222",
+        adminMobile: "8491028539",
         name: user.name,
         mobile: user.mobile,
         role: user.role,

@@ -3,7 +3,7 @@ const mongoose = require("mongoose");
 const settingsSchema = new mongoose.Schema({
   minAmount: { type: Number, default: 300 },
   contactEmail: { type: String, default: "support@scrapvex.com" },
-  contactPhone: { type: String, default: "9086038222" },
+  contactPhone: { type: String, default: "8491028539" },
   officeAddress: { type: String, default: "ScrapVex HQ, Jammu & Kashmir, India" },
   workingHours: { type: String, default: "9 AM - 7 PM" },
   facebookUrl: { type: String, default: "#" },
