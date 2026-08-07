@@ -689,12 +689,12 @@ const approveDeposit = async (req, res) => {
     createNotify(targetUser._id, "User", "Deposit Approved! 🏦", `Your wallet deposit of ₹${transaction.amount} has been verified and approved.`, "success");
 
     if (targetUser.mobile) {
-      const { sendWalletCreditNotification } = require("../utils/notifier");
-      await sendWalletCreditNotification({
+      const { sendDepositApprovedNotification } = require("../utils/notifier");
+      await sendDepositApprovedNotification({
         mobile: targetUser.mobile,
         name: targetUser.name,
         amount: transaction.amount,
-        pickupId: "Deposit",
+        upiRefNo: transaction.depositDetails?.upiRefNo || "N/A",
         newBalance: targetUser.walletBalance
       });
     }
@@ -714,7 +714,7 @@ const rejectDeposit = async (req, res) => {
   try {
     const { id } = req.params;
     const { adminNote } = req.body;
-    const transaction = await WalletTransaction.findById(id);
+    const transaction = await WalletTransaction.findById(id).populate("user");
     if (!transaction || transaction.source !== "deposit") {
       return res.status(404).json({ success: false, message: "Deposit request not found" });
     }
@@ -727,8 +727,21 @@ const rejectDeposit = async (req, res) => {
     transaction.description = `Deposit Rejected: ${adminNote || "Invalid UTR / Payment not received"}`;
     await transaction.save();
 
+    const targetUser = await User.findById(transaction.user?._id || transaction.user);
+
     // Notify user
-    createNotify(transaction.user, "User", "Deposit Rejected ❌", `Your deposit request of ₹${transaction.amount} was rejected. Note: ${adminNote || "Payment not received"}`, "error");
+    createNotify(transaction.user?._id || transaction.user, "User", "Deposit Rejected ❌", `Your deposit request of ₹${transaction.amount} was rejected. Note: ${adminNote || "Payment not received"}`, "error");
+
+    if (targetUser && targetUser.mobile) {
+      const { sendDepositRejectedNotification } = require("../utils/notifier");
+      await sendDepositRejectedNotification({
+        mobile: targetUser.mobile,
+        name: targetUser.name,
+        amount: transaction.amount,
+        upiRefNo: transaction.depositDetails?.upiRefNo || "N/A",
+        reason: adminNote || "Payment or UTR could not be verified"
+      });
+    }
 
     res.status(200).json({
       success: true,

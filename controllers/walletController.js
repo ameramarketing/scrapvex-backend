@@ -247,8 +247,8 @@ const cancelWithdrawal = async (req, res) => {
 const initiateDeposit = async (req, res) => {
   try {
     const { amount, upiRefNo } = req.body;
-    if (!amount || amount <= 0) {
-      return res.status(400).json({ success: false, message: "Invalid deposit amount" });
+    if (!amount || Number(amount) < 1000) {
+      return res.status(400).json({ success: false, message: "Minimum deposit amount is ₹1,000!" });
     }
     if (!upiRefNo || upiRefNo.replace(/\D/g, "").length !== 12) {
       return res.status(400).json({ success: false, message: "Please enter a valid 12-digit UPI Reference Number / UTR" });
@@ -271,9 +271,25 @@ const initiateDeposit = async (req, res) => {
       depositDetails: { upiRefNo }
     });
 
+    // Notify Admin via WhatsApp & SMS
+    try {
+      const user = await User.findById(req.user._id);
+      const { sendAdminNewDepositNotification } = require("../utils/notifier");
+      await sendAdminNewDepositNotification({
+        adminMobile: "9086038222",
+        name: user.name,
+        mobile: user.mobile,
+        role: user.role,
+        amount: Number(amount),
+        upiRefNo
+      });
+    } catch (notifErr) {
+      console.error("Admin deposit notification error:", notifErr.message);
+    }
+
     res.status(200).json({
       success: true,
-      message: "Deposit request submitted successfully! Admin will verify and credit your wallet shortly. 🏦",
+      message: "Deposit request submitted successfully! Admin has been notified to verify and approve. 🏦",
       transaction
     });
   } catch (error) {

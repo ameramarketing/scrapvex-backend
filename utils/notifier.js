@@ -174,6 +174,67 @@ const sendCollectorPurchaseReceiptNotification = async ({ collectorMobile, colle
   try { await sendSMS(collectorMobile, smsText); } catch (e) {}
 };
 
+/**
+ * 13. New Wallet Deposit Alert to Admin
+ */
+const sendAdminNewDepositNotification = async ({ adminMobile = "9086038222", name, mobile, role, amount, upiRefNo }) => {
+  if (!adminMobile) return;
+  const waText = `🟢 *NEW WALLET DEPOSIT REQUEST RECEIVED!*\n\nHello Admin,\nA user has submitted a wallet deposit payment:\n\n👤 *Name*: ${name || 'Partner'}\n📱 *Mobile*: +91 ${mobile}\n🏷️ *Role*: ${(role || 'User').toUpperCase()}\n💰 *Amount*: ₹${amount}\n🔗 *12-Digit UTR / Ref No*: *${upiRefNo}*\n\nPlease check Admin Dashboard to verify UTR and Approve/Reject!`;
+  const smsText = `ScrapVex Admin Alert: New Deposit Request of RS ${amount} by ${name} (Ph: ${mobile}, UTR: ${upiRefNo}). Check dashboard to approve!`;
+
+  console.log(`📲 [NOTIFIER] Sending Admin New Deposit Alert to +91 ${adminMobile}`);
+  try { await sendWhatsAppOTP(adminMobile, waText); } catch (e) {}
+  try { await sendSMS(adminMobile, smsText); } catch (e) {}
+};
+
+/**
+ * 14. Deposit Approved Notification (Customer / Franchise / Collector)
+ */
+const sendDepositApprovedNotification = async ({ mobile, name, amount, upiRefNo, newBalance }) => {
+  const waText = `🎉 *WALLET DEPOSIT APPROVED!*\n\nDear *${name || 'User'}*,\nYour deposit of *₹${amount}* (UTR: *${upiRefNo}*) has been verified & approved! 💵\n\n👛 *Updated Wallet Balance*: *₹${newBalance}*\n\nThank you for choosing ScrapVex! ♻️`;
+  const smsText = `ScrapVex: Deposit of RS ${amount} (UTR: ${upiRefNo}) APPROVED. Updated Wallet Balance: RS ${newBalance}. Thank you!`;
+
+  console.log(`📲 [NOTIFIER] Sending Deposit Approved Alert to +91 ${mobile}`);
+  try { await sendWhatsAppOTP(mobile, waText); } catch (e) {}
+  try { await sendSMS(mobile, smsText); } catch (e) {}
+};
+
+/**
+ * 15. Deposit Rejected Notification with Reason (Customer / Franchise / Collector)
+ */
+const sendDepositRejectedNotification = async ({ mobile, name, amount, upiRefNo, reason }) => {
+  const waText = `❌ *WALLET DEPOSIT REJECTED*\n\nDear *${name || 'User'}*,\nYour wallet deposit request of *₹${amount}* (UTR: *${upiRefNo}*) could not be approved.\n\n⚠️ *Reason*: ${reason || 'Payment or UTR could not be verified'}.\n\nIf you have paid, please contact ScrapVex support with your payment screenshot.`;
+  const smsText = `ScrapVex: Deposit of RS ${amount} (UTR: ${upiRefNo}) REJECTED. Reason: ${reason || 'Unverified UTR'}. Contact support for help.`;
+
+  console.log(`📲 [NOTIFIER] Sending Deposit Rejected Alert to +91 ${mobile}`);
+  try { await sendWhatsAppOTP(mobile, waText); } catch (e) {}
+  try { await sendSMS(mobile, smsText); } catch (e) {}
+};
+
+/**
+ * 16. Withdrawal Approved Notification (User / Collector)
+ */
+const sendWithdrawalApprovedNotification = async ({ mobile, name, amount, upiId, newBalance }) => {
+  const waText = `✅ *WITHDRAWAL REQUEST APPROVED*\n\nDear *${name || 'User'}*,\nYour withdrawal request of *₹${amount}* to UPI (*${upiId || 'Bank'}*) has been processed successfully! 🏦\n\n👛 *Remaining Wallet Balance*: *₹${newBalance}*\n\nFunds have been transferred to your account.`;
+  const smsText = `ScrapVex: Withdrawal of RS ${amount} to ${upiId || 'UPI'} APPROVED. Remaining Balance: RS ${newBalance}. Amount transferred!`;
+
+  console.log(`📲 [NOTIFIER] Sending Withdrawal Approved Alert to +91 ${mobile}`);
+  try { await sendWhatsAppOTP(mobile, waText); } catch (e) {}
+  try { await sendSMS(mobile, smsText); } catch (e) {}
+};
+
+/**
+ * 17. Withdrawal Rejected Notification with Reason (User / Collector)
+ */
+const sendWithdrawalRejectedNotification = async ({ mobile, name, amount, upiId, reason, newBalance }) => {
+  const waText = `❌ *WITHDRAWAL REQUEST REJECTED*\n\nDear *${name || 'User'}*,\nYour withdrawal request of *₹${amount}* to UPI (*${upiId || 'Bank'}*) could not be processed.\n\n⚠️ *Reason*: ${reason || 'Incorrect bank/UPI details'}.\n\n💰 *Refund*: ₹${amount} has been refunded back to your wallet.\n👛 *Current Wallet Balance*: *₹${newBalance}*`;
+  const smsText = `ScrapVex: Withdrawal of RS ${amount} REJECTED. Reason: ${reason || 'Invalid bank info'}. RS ${amount} refunded to wallet. Balance: RS ${newBalance}.`;
+
+  console.log(`📲 [NOTIFIER] Sending Withdrawal Rejected Alert to +91 ${mobile}`);
+  try { await sendWhatsAppOTP(mobile, waText); } catch (e) {}
+  try { await sendSMS(mobile, smsText); } catch (e) {}
+};
+
 module.exports = {
   sendWelcomeCredentialsNotification,
   sendPickupBookingNotification,
@@ -187,5 +248,10 @@ module.exports = {
   sendPasswordResetSecurityNotification,
   sendDailyFranchiseSummaryNotification,
   sendAdminNewPickupNotification,
-  sendCollectorPurchaseReceiptNotification
+  sendCollectorPurchaseReceiptNotification,
+  sendAdminNewDepositNotification,
+  sendDepositApprovedNotification,
+  sendDepositRejectedNotification,
+  sendWithdrawalApprovedNotification,
+  sendWithdrawalRejectedNotification
 };

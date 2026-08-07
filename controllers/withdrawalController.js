@@ -19,16 +19,40 @@ const getWithdrawals = async (req, res) => {
 const requestWithdrawal = async (req, res) => {
   try {
     const { amount, upi, name } = req.body;
-    const user = await User.findById(req.user._id);
+    const numAmount = Number(amount);
 
-    if (amount > user.walletBalance) {
-      return res.status(400).json({ success: false, message: "Insufficient wallet balance" });
+    if (!numAmount || numAmount < 1000) {
+      return res.status(400).json({ success: false, message: "Minimum withdrawal amount is ₹1,000!" });
+    }
+    if (numAmount > 20000) {
+      return res.status(400).json({ success: false, message: "Maximum limit per single withdrawal is ₹20,000!" });
+    }
+
+    const user = await User.findById(req.user._id);
+    if (numAmount > user.walletBalance) {
+      return res.status(400).json({ success: false, message: `Insufficient wallet balance! Available: ₹${user.walletBalance}` });
+    }
+
+    // Check daily withdrawal count (max 3 per day)
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+
+    const todayWithdrawals = await WithdrawalRequest.countDocuments({
+      user: req.user._id,
+      createdAt: { $gte: startOfDay }
+    });
+
+    if (todayWithdrawals >= 3) {
+      return res.status(400).json({
+        success: false,
+        message: "Daily limit reached! Maximum 3 withdrawal requests allowed per day. Please try again tomorrow."
+      });
     }
 
     // 1. Create the Withdrawal Request Record
     const withdrawal = await WithdrawalRequest.create({
       user: req.user._id,
-      amount,
+      amount: numAmount,
       bankDetails: {
         upiId: upi,
         accountName: name
@@ -36,13 +60,13 @@ const requestWithdrawal = async (req, res) => {
     });
 
     // 2. Deduct from User Wallet Balance Immediately (to lock funds)
-    user.walletBalance -= Number(amount);
+    user.walletBalance -= numAmount;
     await user.save();
 
     // 3. Create a Pending Wallet Transaction Record
     await WalletTransaction.create({
       user: user._id,
-      amount: Number(amount),
+      amount: numAmount,
       type: "debit",
       status: "pending",
       description: `Withdrawal request to ${upi}`,
@@ -53,10 +77,10 @@ const requestWithdrawal = async (req, res) => {
     const admins = await User.find({ role: "admin" });
     const { createNotify } = require("./notificationController");
     admins.forEach(admin => {
-      createNotify(admin._id, "User", "New Payout Request", `${user.name} requested ₹${amount} withdrawal`, "info");
+      createNotify(admin._id, "User", "New Payout Request 🏦", `${user.name} requested ₹${numAmount} withdrawal to ${upi}`, "info");
     });
 
-    res.status(201).json({ success: true, message: "Withdrawal request submitted", withdrawal });
+    res.status(201).json({ success: true, message: "Withdrawal request submitted successfully!", withdrawal });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -67,6 +91,8 @@ const processWithdrawal = async (req, res) => {
     const { status, adminNote, transactionId } = req.body;
     const withdrawal = await WithdrawalRequest.findById(req.params.id);
     if (!withdrawal) return res.status(404).json({ success: false, message: "Not found" });
+
+    const targetUser = await User.findById(withdrawal.user);
 
     if (status === "Completed") {
       // Find the pending transaction and mark it completed
@@ -87,9 +113,10 @@ const processWithdrawal = async (req, res) => {
       withdrawal.processedAt = new Date();
     } else if (status === "Rejected") {
       // Refund the wallet balance
-      const user = await User.findById(withdrawal.user);
-      user.walletBalance += withdrawal.amount;
-      await user.save();
+      if (targetUser) {
+        targetUser.walletBalance += withdrawal.amount;
+        await targetUser.save();
+      }
 
       // Find the pending transaction and mark it failed
       const transaction = await WalletTransaction.findOne({
@@ -102,7 +129,7 @@ const processWithdrawal = async (req, res) => {
 
       if (transaction) {
         transaction.status = "failed";
-        transaction.description = `Withdrawal Rejected (Refunded)`;
+        transaction.description = `Withdrawal Rejected (${adminNote || "Refunded"})`;
         await transaction.save();
       }
     }
@@ -114,27 +141,30 @@ const processWithdrawal = async (req, res) => {
 
     // 5. Notify the User via In-App & WhatsApp
     const { createNotify } = require("./notificationController");
-    const { sendWithdrawalStatusNotification } = require("../utils/notifier");
-
-    const targetUser = await User.findById(withdrawal.user);
+    const { sendWithdrawalApprovedNotification, sendWithdrawalRejectedNotification } = require("../utils/notifier");
 
     if (status === "Completed") {
-      createNotify(withdrawal.user, "User", "Withdrawal Successful", `Your payout of ₹${withdrawal.amount} has been processed. Ref: ${transactionId || "N/A"}`, "success");
-    } else if (status === "Rejected") {
-      createNotify(withdrawal.user, "User", "Withdrawal Rejected", `Your payout of ₹${withdrawal.amount} was rejected. Reason: ${adminNote || "N/A"}. Funds refunded.`, "error");
-    }
-
-    if (targetUser && targetUser.mobile) {
-      try {
-        await sendWithdrawalStatusNotification({
+      createNotify(withdrawal.user, "User", "Withdrawal Successful ✅", `Your payout of ₹${withdrawal.amount} has been processed. Ref: ${transactionId || "N/A"}`, "success");
+      if (targetUser && targetUser.mobile) {
+        await sendWithdrawalApprovedNotification({
           mobile: targetUser.mobile,
           name: targetUser.name,
           amount: withdrawal.amount,
           upiId: withdrawal.bankDetails?.upiId || "UPI/Bank",
-          status: status === "Completed" ? "APPROVED" : "REJECTED"
+          newBalance: targetUser.walletBalance
         });
-      } catch (waErr) {
-        console.error("WhatsApp withdrawal status notification error:", waErr.message);
+      }
+    } else if (status === "Rejected") {
+      createNotify(withdrawal.user, "User", "Withdrawal Rejected ❌", `Your payout of ₹${withdrawal.amount} was rejected. Reason: ${adminNote || "N/A"}. Funds refunded.`, "error");
+      if (targetUser && targetUser.mobile) {
+        await sendWithdrawalRejectedNotification({
+          mobile: targetUser.mobile,
+          name: targetUser.name,
+          amount: withdrawal.amount,
+          upiId: withdrawal.bankDetails?.upiId || "UPI/Bank",
+          reason: adminNote || "Invalid UPI / Bank details",
+          newBalance: targetUser.walletBalance
+        });
       }
     }
 
