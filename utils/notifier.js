@@ -155,6 +155,25 @@ const sendPickupTransactionNotification = async ({ mobile, name, pickupId, statu
   try { await sendSMS(mobile, smsText); } catch (e) {}
 };
 
+/**
+ * 12. Purchase / Handoff Recorded Alert to Collector
+ */
+const sendCollectorPurchaseReceiptNotification = async ({ collectorMobile, collectorName, invoiceNo, items, totalAmount, paymentStatus, autoSettleAmount }) => {
+  if (!collectorMobile) return;
+
+  const itemSummary = items && items.length > 0
+    ? items.map(i => `• ${i.name || 'Scrap'}: ${i.quantity} kg @ ₹${i.rate}/kg = ₹${i.amount}`).join("\n")
+    : `Total Amount: ₹${totalAmount}`;
+
+  const waText = `🧾 *ScrapVex Purchase & Settlement Receipt*\n\nHello *${collectorName || 'Collector/Partner'}*,\nYour scrap handoff / purchase has been recorded by Admin! 📦\n\n🆔 *Ref*: #${invoiceNo}\n\n📋 *Items Purchased*:\n${itemSummary}\n\n💰 *Total Amount*: ₹${totalAmount}\n💳 *Payment Status*: ${paymentStatus || 'COMPLETED'}${autoSettleAmount > 0 ? `\n⚖️ *Debt Settled*: ₹${autoSettleAmount}` : ''}\n\nThank you for working with ScrapVex! ♻️`;
+  
+  const smsText = `ScrapVex Purchase Receipt #${invoiceNo}: Amount RS ${totalAmount}. Items: ${items?.length || 1} scrap categories. Status: ${paymentStatus}. Thank you!`;
+
+  console.log(`📲 [NOTIFIER] Sending Collector Purchase Receipt to +91 ${collectorMobile}`);
+  try { await sendWhatsAppOTP(collectorMobile, waText); } catch (e) {}
+  try { await sendSMS(collectorMobile, smsText); } catch (e) {}
+};
+
 module.exports = {
   sendWelcomeCredentialsNotification,
   sendPickupBookingNotification,
@@ -167,5 +186,6 @@ module.exports = {
   sendWithdrawalStatusNotification,
   sendPasswordResetSecurityNotification,
   sendDailyFranchiseSummaryNotification,
-  sendAdminNewPickupNotification
+  sendAdminNewPickupNotification,
+  sendCollectorPurchaseReceiptNotification
 };

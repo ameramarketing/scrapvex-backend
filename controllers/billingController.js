@@ -362,6 +362,26 @@ const createPurchase = async (req, res) => {
       }
     }
 
+    // Send Instant WhatsApp & SMS Purchase Receipt to Collector / Supplier
+    try {
+      const { sendCollectorPurchaseReceiptNotification } = require("../utils/notifier");
+      const targetPhone = collector?.mobile || supplierContact;
+      const targetName = collector?.name || supplierName;
+      if (targetPhone) {
+        await sendCollectorPurchaseReceiptNotification({
+          collectorMobile: targetPhone,
+          collectorName: targetName,
+          invoiceNo: newPurchase._id.toString().slice(-6).toUpperCase(),
+          items: newPurchase.items,
+          totalAmount: newPurchase.totalAmount,
+          paymentStatus: newPurchase.paymentStatus,
+          autoSettleAmount
+        });
+      }
+    } catch (notifErr) {
+      console.log("Collector purchase notification note:", notifErr.message);
+    }
+
     res.status(201).json({
       success: true,
       message: `Purchase recorded! Auto-settled: ₹${autoSettleAmount}. Fresh payment: ₹${freshWalletDebit} via ${paymentMethod}.`,
