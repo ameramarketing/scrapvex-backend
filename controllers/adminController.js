@@ -748,29 +748,35 @@ const cleanTestData = async (req, res) => {
     const Contact = require("../models/Contact");
     const Review = require("../models/Review");
     const Notification = require("../models/Notification");
-    const Withdrawal = require("../models/Withdrawal");
+    const WithdrawalRequest = require("../models/WithdrawalRequest");
+    const Purchase = require("../models/Purchase");
+    const Sale = require("../models/Sale");
+    const Inventory = require("../models/Inventory");
 
-    // 1. Delete all test pickups
+    // 1. Delete all test pickups, purchases, sales & inventory
     await Pickup.deleteMany({});
+    await Purchase.deleteMany({});
+    await Sale.deleteMany({});
+    await Inventory.deleteMany({});
 
     // 2. Delete all test transactions & withdrawals
     await WalletTransaction.deleteMany({});
-    await Withdrawal.deleteMany({});
+    await WithdrawalRequest.deleteMany({});
 
     // 3. Delete all test contacts, reviews & notifications
     await Contact.deleteMany({});
     await Review.deleteMany({});
     await Notification.deleteMany({});
 
-    // 4. Delete all customer test users (role: "user"), preserve "admin" and "franchise"
-    await User.deleteMany({ role: "user" });
+    // 4. Delete all customer test users (role: "user") AND collectors (role: "collector"), preserve "admin" and "franchise"
+    await User.deleteMany({ role: { $in: ["user", "collector"] } });
 
     // 5. Reset wallet balances & pending balances for preserved Franchises & Admins
     await User.updateMany({ role: { $in: ["admin", "franchise"] } }, { $set: { walletBalance: 0, pendingBalance: 0 } });
 
     res.status(200).json({
       success: true,
-      message: "Test data cleaned successfully! Franchise and Admin accounts preserved."
+      message: "All test data (pickups, sales, purchases, collectors & users) cleaned successfully! Franchise and Admin accounts preserved."
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
