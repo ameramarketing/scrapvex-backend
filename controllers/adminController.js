@@ -109,14 +109,17 @@ const updatePickupStatus = async (req, res) => {
     const statusMsg = status === "Completed" ? `Your pickup for ${pickup.scrapType} is completed. Amount Paid: ₹${pickup.amount || 0}` : `Your pickup status has been updated to: ${status}`;
     createNotify(pickup.user, "User", "Pickup Status Updated", statusMsg, status === "Completed" ? "success" : "info");
 
-    const pickupUser = await User.findById(pickup.user);
-    if (pickupUser && pickupUser.mobile) {
+    const targetMobile = pickup.mobile || (pickupUser && pickupUser.mobile);
+    const targetName = pickup.name || (pickupUser && pickupUser.name) || "Customer";
+    if (targetMobile) {
       await sendPickupTransactionNotification({
-        mobile: pickupUser.mobile,
-        name: pickupUser.name,
+        mobile: targetMobile,
+        name: targetName,
         pickupId: pickup._id.toString().slice(-6),
         status: status,
-        amount: pickup.amount
+        amount: pickup.amount,
+        weight: pickup.weight,
+        scrapType: pickup.scrapType
       });
     }
 

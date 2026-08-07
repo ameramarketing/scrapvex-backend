@@ -140,6 +140,21 @@ const sendAdminNewPickupNotification = async ({ adminMobile, name, mobile, addre
   try { await sendSMS(adminMobile, smsText); } catch (e) {}
 };
 
+/**
+ * 6b. Admin Status Update / Purchase Record Notification
+ */
+const sendPickupTransactionNotification = async ({ mobile, name, pickupId, status, amount, weight, scrapType }) => {
+  const isCompleted = status === "Completed";
+  const emoji = isCompleted ? "✨" : "📋";
+  
+  const waText = `${emoji} *ScrapVex Purchase & Order Update*\n\nDear *${name || 'Customer'}*,\nYour ScrapVex order #${pickupId} status has been updated to: *${status.toUpperCase()}* ${isCompleted ? '🎉' : ''}\n\n${isCompleted ? `📦 *Scrap Type*: ${scrapType || 'Scrap Material'}\n⚖️ *Weight*: ${weight || 'N/A'} kg\n💰 *Amount Paid / Credited*: ₹${amount || 0}\n\nThank you for choosing ScrapVex Recycling! ♻️` : `We will update you on further progress.`}`;
+  const smsText = `ScrapVex Order #${pickupId} update: Status is ${status}. ${isCompleted ? `Amount Paid: RS ${amount || 0}. Thank you!` : ''}`;
+
+  console.log(`📲 [NOTIFIER] Sending Pickup Status/Purchase Notification (#${pickupId}) to +91 ${mobile}`);
+  try { await sendWhatsAppOTP(mobile, waText); } catch (e) {}
+  try { await sendSMS(mobile, smsText); } catch (e) {}
+};
+
 module.exports = {
   sendWelcomeCredentialsNotification,
   sendPickupBookingNotification,
@@ -147,6 +162,7 @@ module.exports = {
   sendNewTaskCollectorNotification,
   sendCollectorOnTheWayNotification,
   sendPickupCompletedReceiptNotification,
+  sendPickupTransactionNotification,
   sendWalletCreditNotification,
   sendWithdrawalStatusNotification,
   sendPasswordResetSecurityNotification,
