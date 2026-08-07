@@ -127,6 +127,19 @@ const sendDailyFranchiseSummaryNotification = async ({ franchiseMobile, franchis
   try { await sendSMS(franchiseMobile, smsText); } catch (e) {}
 };
 
+/**
+ * 11. New Pickup Alert to Admin's WhatsApp & SMS
+ */
+const sendAdminNewPickupNotification = async ({ adminMobile, name, mobile, address, city, scrapType, pickupId, estimatedAmount }) => {
+  if (!adminMobile) return;
+  const waText = `🚨 *NEW PICKUP BOOKING RECEIVED! (#${pickupId})*\n\nHello Admin,\nA new customer has booked a doorstep pickup!\n\n👤 *Customer Name*: ${name}\n📞 *Mobile*: +91 ${mobile}\n📍 *City & Address*: ${address}, ${city}\n📦 *Material*: ${scrapType}\n💰 *Est. Amount*: ₹${estimatedAmount || 0}\n\nPlease check Admin Dashboard to assign a collector!`;
+  const smsText = `ScrapVex Admin Alert: New Pickup #${pickupId} booked by ${name} (Ph: ${mobile}) in ${city}. Check dashboard!`;
+
+  console.log(`📲 [NOTIFIER] Sending Admin New Pickup Alert to +91 ${adminMobile}`);
+  try { await sendWhatsAppOTP(adminMobile, waText); } catch (e) {}
+  try { await sendSMS(adminMobile, smsText); } catch (e) {}
+};
+
 module.exports = {
   sendWelcomeCredentialsNotification,
   sendPickupBookingNotification,
@@ -137,5 +150,6 @@ module.exports = {
   sendWalletCreditNotification,
   sendWithdrawalStatusNotification,
   sendPasswordResetSecurityNotification,
-  sendDailyFranchiseSummaryNotification
+  sendDailyFranchiseSummaryNotification,
+  sendAdminNewPickupNotification
 };

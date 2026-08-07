@@ -30,7 +30,8 @@ const {
   updateCityRate,
   getCityRates,
   approveDeposit,
-  rejectDeposit
+  rejectDeposit,
+  cleanTestData
 } = require(
   "../controllers/adminController"
 );
@@ -41,6 +42,9 @@ const {
 } = require(
   "../middleware/authMiddleware"
 );
+
+/* Clean Test Data (Preserve Franchise & Admin) */
+router.post("/clean-test-data", protect, authorize("admin"), cleanTestData);
 
 /* ==================================
    ADMIN ONLY ROUTES

@@ -128,9 +128,9 @@ const createPickup = async (req, res) => {
       createNotify(franchise._id, "User", "New City Pickup", `Customer ${name} booked a ${scrapType} pickup in ${city}`, "pickup_request");
     });
 
-    // Send Instant WhatsApp & SMS Booking Alert
+    // Send Instant WhatsApp & SMS Booking Alert to Customer & Admin
     try {
-      const { sendPickupBookingNotification } = require("../utils/notifier");
+      const { sendPickupBookingNotification, sendAdminNewPickupNotification } = require("../utils/notifier");
       await sendPickupBookingNotification({
         mobile: mobile,
         name: name,
@@ -140,6 +140,22 @@ const createPickup = async (req, res) => {
         scrapType: scrapType,
         estimatedAmount: estimatedAmount
       });
+
+      // Send Admin WhatsApp Notification
+      const platformSettings = await Settings.findOne();
+      const adminPhone = platformSettings?.contactPhone || process.env.ADMIN_WHATSAPP || "9086038222";
+      if (adminPhone) {
+        await sendAdminNewPickupNotification({
+          adminMobile: adminPhone,
+          name,
+          mobile,
+          address,
+          city,
+          scrapType,
+          pickupId: pickup._id.toString().slice(-6),
+          estimatedAmount
+        });
+      }
     } catch (waErr) {
       console.log("Booking notification dispatch note:", waErr.message);
     }
