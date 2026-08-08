@@ -252,6 +252,55 @@ const getPurchasesBySupplier = async (req, res) => {
 
 
 
+// 5d. Send Purchase Bill on WhatsApp
+const sendPurchaseBillOnWhatsApp = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const purchase = await Purchase.findById(id).populate("supplierId");
+    if (!purchase) return res.status(404).json({ success: false, message: "Purchase not found" });
+
+    const targetPhone = purchase.supplierId?.mobile || purchase.supplierContact;
+    if (!targetPhone) return res.status(400).json({ success: false, message: "Supplier ka phone number nahi hai" });
+
+    const targetName = purchase.supplierId?.name || purchase.supplierName;
+    const invoiceNo = purchase._id.toString().slice(-8).toUpperCase();
+    const dateStr = new Date(purchase.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+
+    // Build bill text
+    const itemLines = purchase.items.map((item, i) =>
+      `${i + 1}. ${item.name}: ${item.quantity} kg × ₹${item.rate}/kg = *₹${item.amount}*`
+    ).join("\n");
+
+    const billText = `🧾 *SCRAPVEX PURCHASE RECEIPT*
+━━━━━━━━━━━━━━━━━━━━
+🆔 *Bill No*: #${invoiceNo}
+📅 *Date*: ${dateStr}
+━━━━━━━━━━━━━━━━━━━━
+
+👤 *Supplier*: ${targetName}
+📞 *Contact*: ${targetPhone}
+
+📋 *Items Purchased*:
+${itemLines}
+
+━━━━━━━━━━━━━━━━━━━━
+💰 *TOTAL AMOUNT: ₹${purchase.totalAmount}*
+💳 *Payment*: ${purchase.paymentStatus} (${purchase.paymentMethod})
+━━━━━━━━━━━━━━━━━━━━
+${purchase.notes ? `📝 Notes: ${purchase.notes}\n` : ""}
+✅ Thank you for working with *ScrapVex*!
+♻️ ScrapVex | Rajouri, J&K
+📞 8491028539 | 🌐 scrapvex.in`;
+
+    const { sendWhatsAppOTP } = require("../utils/whatsapp");
+    await sendWhatsAppOTP(targetPhone, billText);
+
+    res.status(200).json({ success: true, message: `WhatsApp bill sent to ${targetPhone}` });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 const createPurchase = async (req, res) => {
   try {
     const { supplierName, supplierContact, items, totalAmount, paymentStatus, paymentMethod, notes } = req.body;
@@ -453,5 +502,7 @@ module.exports = {
   getPurchases,
   createPurchase,
   editPurchase,
-  getPurchasesBySupplier
+  getPurchasesBySupplier,
+  sendPurchaseBillOnWhatsApp
 };
+
