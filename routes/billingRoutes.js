@@ -6,7 +6,9 @@ const {
   getSales,
   createSale,
   getPurchases,
-  createPurchase
+  createPurchase,
+  editPurchase,
+  getPurchasesBySupplier
 } = require("../controllers/billingController");
 
 const { protect, authorize } = require("../middleware/authMiddleware");
@@ -17,5 +19,8 @@ router.get("/sales", protect, authorize("admin", "franchise"), getSales);
 router.post("/sales", protect, authorize("admin", "franchise"), createSale);
 router.get("/purchases", protect, authorize("admin", "franchise"), getPurchases);
 router.post("/purchases", protect, authorize("admin", "franchise"), createPurchase);
+router.put("/purchases/:id", protect, authorize("admin", "franchise"), editPurchase);
+router.get("/purchases/by-supplier", protect, authorize("admin", "franchise"), getPurchasesBySupplier);
 
 module.exports = router;
+

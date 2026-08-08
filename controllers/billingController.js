@@ -200,6 +200,58 @@ const getPurchases = async (req, res) => {
   }
 };
 
+// 5b. Edit Purchase (update items, notes, paymentStatus)
+const editPurchase = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { items, notes, paymentStatus, paymentMethod, supplierName, supplierContact } = req.body;
+
+    const purchase = await Purchase.findById(id);
+    if (!purchase) return res.status(404).json({ success: false, message: "Purchase not found" });
+
+    // Only allow admin or the franchise who created it
+    if (req.user.role === "franchise" && String(purchase.franchiseId) !== String(req.user._id)) {
+      return res.status(403).json({ success: false, message: "Not authorized to edit this purchase" });
+    }
+
+    if (items && items.length > 0) {
+      const totalAmount = items.reduce((acc, item) => acc + (parseFloat(item.amount) || 0), 0);
+      purchase.items = items;
+      purchase.totalAmount = totalAmount;
+    }
+    if (notes !== undefined) purchase.notes = notes;
+    if (paymentStatus) purchase.paymentStatus = paymentStatus;
+    if (paymentMethod) purchase.paymentMethod = paymentMethod;
+    if (supplierName) purchase.supplierName = supplierName;
+    if (supplierContact) purchase.supplierContact = supplierContact;
+
+    await purchase.save();
+    res.status(200).json({ success: true, message: "Purchase updated successfully", purchase });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// 5c. Get All Purchases By Supplier (for bill history view)
+const getPurchasesBySupplier = async (req, res) => {
+  try {
+    const { supplierName, supplierContact } = req.query;
+    const baseQuery = req.user.role === "franchise" ? { franchiseId: req.user._id } : { franchiseId: null };
+
+    let query = { ...baseQuery };
+    if (supplierName) query.supplierName = { $regex: supplierName, $options: "i" };
+    if (supplierContact) query.supplierContact = supplierContact;
+
+    const purchases = await Purchase.find(query).populate("supplierId").sort({ createdAt: -1 });
+    const totalAmount = purchases.reduce((acc, p) => acc + (p.totalAmount || 0), 0);
+    res.status(200).json({ success: true, purchases, totalAmount });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+
+
 const createPurchase = async (req, res) => {
   try {
     const { supplierName, supplierContact, items, totalAmount, paymentStatus, paymentMethod, notes } = req.body;
@@ -399,5 +451,7 @@ module.exports = {
   getSales,
   createSale,
   getPurchases,
-  createPurchase
+  createPurchase,
+  editPurchase,
+  getPurchasesBySupplier
 };
